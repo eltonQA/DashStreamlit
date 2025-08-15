@@ -100,7 +100,7 @@ def processar_dados_extraidos(extracted_data):
     # Regex para identificar o estado da execução
     regex_status_est = re.compile(r'Estado da\s*Execução:\s*(\w+)')
     # Regex para identificar o nome completo do caso de teste e seu ID
-    regex_test_case = re.compile(r'Caso de Teste\s*([A-Z]+-\d+):\s*(.*)\s*\[Versão.*\]')
+    regex_test_case = re.compile(r'Caso de Teste\s*([A-Z]+-\d+):\s*(.*)')
     # Regex para identificar comentários
     regex_comments = re.compile(r'Comentários\s*(.*)\s*https:\/\/.*')
 
