@@ -340,7 +340,7 @@ def exibir_dashboard(processed_data, genai_instance=None):
     for platform in sorted(unique_platforms):
         # Gerar uma chave única para o expander da plataforma
         platform_key = f"platform-{platform}"
-        with st.expander(f"📱💻 {platform}", expanded=True):
+        with st.expander(f"📱💻 {platform}", expanded=True, key=platform_key):
             platform_data = df_platform_stories[df_platform_stories['platform'] == platform]
             
             unique_stories = platform_data[['story_id', 'story_title']].drop_duplicates().sort_values(by='story_id')
