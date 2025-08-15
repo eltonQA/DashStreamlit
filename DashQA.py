@@ -344,7 +344,6 @@ def exibir_dashboard(processed_data, genai_instance=None):
 
     for platform in sorted(unique_platforms):
         # Gerar uma chave única para o expander da plataforma
-        platform_key = f"platform-{platform}"
         with st.expander(f"📱💻 {platform}", expanded=True):
             platform_data = df_platform_stories[df_platform_stories['platform'] == platform]
             
@@ -378,7 +377,7 @@ def exibir_dashboard(processed_data, genai_instance=None):
                 story_kpis["Percentual de Sucesso"] = (story_kpis["Casos Passados"] / story_kpis["Casos Executados"]) * 100 if story_kpis["Casos Executados"] > 0 else 0
                 
                 # Expander para cada história
-                with st.expander(f"📚 {story_id} - {story_title}", expanded=False, key=story_key):
+                with st.expander(f"📚 {story_id} - {story_title}", expanded=False):
                     st.markdown(f"**KPIs para a História:** `{story_title}`")
                     col1, col2 = st.columns(2)
                     with col1:
