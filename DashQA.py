@@ -373,7 +373,7 @@ def exibir_dashboard(processed_data, genai_instance=None):
                 story_kpis["Percentual de Sucesso"] = (story_kpis["Casos Passados"] / story_kpis["Casos Executados"]) * 100 if story_kpis["Casos Executados"] > 0 else 0
                 
                 # Expander para cada história
-                with st.expander(f"📚 {story_id} - {story_title}", expanded=False):
+                with st.expander(f"📚 {story_id} - {story_title}", expanded=False, key=story_key):
                     st.markdown(f"**KPIs para a História:** `{story_title}`")
                     col1, col2 = st.columns(2)
                     with col1:
@@ -392,7 +392,7 @@ def exibir_dashboard(processed_data, genai_instance=None):
                             color_discrete_map=custom_colors
                         )
                         fig_pie.update_traces(textposition='inside', textinfo='percent+label')
-                        st.plotly_chart(fig_pie, use_container_width=True, key=f"pie-{story_id}")
+                        st.plotly_chart(fig_pie, use_container_width=True, key=f"pie-{platform}-{story_id}")
                     
                     with col2:
                         fig_bar = px.bar(
@@ -404,7 +404,7 @@ def exibir_dashboard(processed_data, genai_instance=None):
                             color_discrete_map=custom_colors
                         )
                         fig_bar.update_layout(showlegend=False)
-                        st.plotly_chart(fig_bar, use_container_width=True, key=f"bar-{story_id}")
+                        st.plotly_chart(fig_bar, use_container_width=True, key=f"bar-{platform}-{story_id}")
                     
                     st.subheader("Dados Detalhados")
                     st.dataframe(story_data.rename(columns={'status': 'Status'}), use_container_width=True)
