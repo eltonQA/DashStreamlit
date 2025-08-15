@@ -315,15 +315,13 @@ def display_overall_dashboard(df_status, kpis):
         'Casos': [10, 2, 1, 8, 3, 2]
     })
     
-    fig_3d = go.Figure(data=[go.Bar(
+    fig_3d = go.Figure(data=[go.Bar3d(
         x=df_3d['Categoria'],
         y=df_3d['Time'],
         z=df_3d['Casos'],
         marker=dict(
             color=['green', 'red', 'yellow', 'green', 'red', 'yellow'],
-            colorscale='Viridis'
         ),
-        type='bar'
     )])
 
     fig_3d.update_layout(
