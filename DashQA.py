@@ -1,6 +1,6 @@
 """
 QA Dashboard App - Aplicativo para análise de métricas de QA a partir de PDFs
-Versão otimizada para Streamlit Cloud com agrupamento por história
+Versão otimizada para Streamlit Cloud com cores personalizadas
 """
 import streamlit as st
 import pandas as pd
@@ -86,7 +86,6 @@ def process_extracted_data(extracted_data):
     
     # Variáveis para rastrear a história e o caso de teste atuais
     current_story_id = "Não Identificado"
-    current_story_title = "Não Identificado"
     
     # Regex para identificar padrões
     # 'Suite de Testes : ECOMDGT-9755: Refatoração de Meus pedidos 1'
@@ -105,7 +104,6 @@ def process_extracted_data(extracted_data):
         story_match = regex_story.search(line)
         if story_match:
             current_story_id = story_match.group(1).strip()
-            current_story_title = story_match.group(2).strip()
             continue
             
         # Tenta encontrar o status do teste.
@@ -115,7 +113,6 @@ def process_extracted_data(extracted_data):
             status = status_match.group(1).strip()
             raw_test_data.append({
                 'story_id': current_story_id,
-                'story_title': current_story_title,
                 'status': status
             })
             continue
@@ -158,7 +155,7 @@ def process_extracted_data(extracted_data):
     df_stories['status'] = df_stories['status'].replace('Falhou', 'Falhado')
     
     # Agrupa por história e status para criar a tabela de dados
-    grouped_data = df_stories.groupby(['story_id', 'story_title', 'status']).size().reset_index(name='Total')
+    grouped_data = df_stories.groupby(['story_id', 'status']).size().reset_index(name='Total')
 
     # Calcula KPIs totais
     total_cases = len(df_stories)
@@ -223,15 +220,14 @@ Regras de formatação:
 - Resumo por História:
 """
         # Agrupar e formatar o resumo por história
-        stories_summary = df_stories.groupby(['story_id', 'story_title', 'status']).size().unstack(fill_value=0)
+        stories_summary = df_stories.groupby(['story_id', 'status']).size().unstack(fill_value=0)
         
         for index, row in stories_summary.iterrows():
-            story_id, story_title = index
+            story_id = index
             total_story_tests = row.sum()
-            passed_story_tests = row.get('Passou', 0)
             
             prompt += f"""
-- **{story_id} - {story_title}**:
+- **{story_id}**:
     - Casos totais: {total_story_tests}
     - Status:
 """
@@ -248,6 +244,14 @@ Regras de formatação:
         return f"Erro ao gerar texto: {e}"
 
 # --- Funções de exibição ---
+# Mapa de cores personalizado para os gráficos
+custom_colors = {
+    'Passou': '#008000',      # Verde
+    'Falhado': '#FF2800',     # Vermelho Ferrari
+    'Bloqueado': '#FFFF00',   # Amarelo
+    'Não Executado': '#0000FF'# Azul
+}
+
 def display_kpis(kpis):
     """Exibe os KPIs principais em colunas."""
     col1, col2, col3, col4 = st.columns(4)
@@ -271,6 +275,39 @@ def display_kpis(kpis):
             label="Percentual de Sucesso",
             value=f"{kpis.get('Percentual de Sucesso', 0):.1f}%"
         )
+        
+def display_overall_dashboard(df_status, kpis):
+    """Exibe o dashboard geral."""
+    st.header("📈 Dashboard Geral de Testes")
+    display_kpis(kpis)
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        st.subheader("📊 Distribuição por Status (Geral)")
+        fig_pie = px.pie(
+            df_status,
+            values='Total',
+            names='Status',
+            title="Total de Casos por Status",
+            color_discrete_map=custom_colors
+        )
+        fig_pie.update_traces(textposition='inside', textinfo='percent+label')
+        st.plotly_chart(fig_pie, use_container_width=True)
+    
+    with col2:
+        st.subheader("📈 Casos por Status (Geral)")
+        fig_bar = px.bar(
+            df_status,
+            x='Status',
+            y='Total',
+            title="Número de Casos por Status",
+            color='Status',
+            color_discrete_map=custom_colors
+        )
+        fig_bar.update_layout(showlegend=False)
+        st.plotly_chart(fig_bar, use_container_width=True)
+    st.markdown("---")
+
 
 def display_dashboard(processed_data, genai_instance=None):
     """Exibe o dashboard principal com agrupamento por história."""
@@ -279,9 +316,7 @@ def display_dashboard(processed_data, genai_instance=None):
     kpis = processed_data["kpis"]
 
     # Seção de KPIs Gerais
-    st.header("📈 KPIs Gerais do Relatório")
-    display_kpis(kpis)
-    st.markdown("---")
+    display_overall_dashboard(df_status, kpis)
     
     # Seção de Geração de Texto com IA
     if genai_instance and GENAI_AVAILABLE:
@@ -299,31 +334,32 @@ def display_dashboard(processed_data, genai_instance=None):
     # Seção de Análise por História
     st.header("📋 Análise Detalhada por História")
 
-    unique_stories = df_stories[['story_id', 'story_title']].drop_duplicates().sort_values(by='story_id')
+    unique_stories = df_stories['story_id'].unique()
     
-    if unique_stories.empty:
+    if len(unique_stories) == 0:
         st.info("Nenhuma história de teste foi identificada no arquivo.")
         return
 
-    for index, story in unique_stories.iterrows():
-        story_id = story['story_id']
-        story_title = story['story_title']
+    for story_id in sorted(unique_stories):
         
         # Filtra os dados para a história atual
         story_data = df_stories[df_stories['story_id'] == story_id]
+        
+        # Agrupa os dados da história por status para os gráficos
+        story_status_counts = story_data.groupby('status').sum().reset_index()
 
         # Calcula KPIs da história
         story_kpis = {
-            "Total de Casos de Teste": story_data['Total'].sum(),
-            "Casos Passados": story_data[story_data['status'] == 'Passou']['Total'].sum(),
-            "Casos Executados": story_data[story_data['status'] != 'Não Executado']['Total'].sum()
+            "Total de Casos de Teste": story_status_counts['Total'].sum(),
+            "Casos Passados": story_status_counts[story_status_counts['status'] == 'Passou']['Total'].sum(),
+            "Casos Executados": story_status_counts[story_status_counts['status'] != 'Não Executado']['Total'].sum()
         }
         
         story_kpis["Percentual de Execucao"] = (story_kpis["Casos Executados"] / story_kpis["Total de Casos de Teste"]) * 100 if story_kpis["Total de Casos de Teste"] > 0 else 0
         story_kpis["Percentual de Sucesso"] = (story_kpis["Casos Passados"] / story_kpis["Casos Executados"]) * 100 if story_kpis["Casos Executados"] > 0 else 0
         
         # Expander para cada história
-        with st.expander(f"📚 {story_id} - {story_title}"):
+        with st.expander(f"📚 {story_id}"):
             st.markdown(f"**KPIs para a História:** `{story_id}`")
             col1, col2 = st.columns(2)
             with col1:
@@ -335,23 +371,23 @@ def display_dashboard(processed_data, genai_instance=None):
             col1, col2 = st.columns(2)
             with col1:
                 fig_pie = px.pie(
-                    story_data,
+                    story_status_counts,
                     values='Total',
                     names='status',
                     title="Distribuição de Status",
-                    color_discrete_sequence=px.colors.qualitative.Set3
+                    color_discrete_map=custom_colors
                 )
                 fig_pie.update_traces(textposition='inside', textinfo='percent+label')
                 st.plotly_chart(fig_pie, use_container_width=True)
             
             with col2:
                 fig_bar = px.bar(
-                    story_data,
+                    story_status_counts,
                     x='status',
                     y='Total',
                     title="Casos por Status",
                     color='status',
-                    color_discrete_sequence=px.colors.qualitative.Set2
+                    color_discrete_map=custom_colors
                 )
                 fig_bar.update_layout(showlegend=False)
                 st.plotly_chart(fig_bar, use_container_width=True)
@@ -375,15 +411,15 @@ def display_sample_dashboard():
 
     sample_data = pd.DataFrame({
         'story_id': ['ECOMDGT-12128', 'ECOMDGT-12128', 'ECOMDGT-9755', 'ECOMDGT-9755', 'ECOMDGT-9755', 'ECOMDGT-9755'],
-        'story_title': ['Refatoração do banner', 'Refatoração do banner', 'Refatoração de Meus pedidos', 'Refatoração de Meus pedidos', 'Refatoração de Meus pedidos', 'Refatoração de Meus pedidos'],
         'status': ['Passou', 'Falhado', 'Passou', 'Falhado', 'Bloqueado', 'Não Executado'],
         'Total': [2, 1, 3, 1, 1, 1]
     })
     
-    grouped_data = sample_data.groupby(['story_id', 'story_title', 'status']).sum().reset_index()
+    grouped_data = sample_data.groupby(['story_id', 'status']).sum().reset_index()
+    df_status = sample_data.groupby('status').sum().reset_index().rename(columns={'status': 'Status'})
 
     display_dashboard({
-        "df_status": sample_data.groupby('status').sum().reset_index().rename(columns={'status': 'Status'}),
+        "df_status": df_status,
         "kpis": {
             "Total de Casos de Teste": 9,
             "Casos Passados": 5,
