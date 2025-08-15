@@ -104,6 +104,8 @@ def processar_dados_extraidos(extracted_data):
     # Regex para identificar comentários
     regex_comments = re.compile(r'Comentários\s*(.*)\s*https:\/\/.*')
 
+    
+    temp_test_case_info = {}
 
     for i, line in enumerate(lines):
         line = line.strip()
@@ -126,34 +128,39 @@ def processar_dados_extraidos(extracted_data):
         if test_case_match:
             test_case_id = test_case_match.group(1).strip()
             test_case_name = test_case_match.group(2).strip()
-            
-            # Procurar pelo status e comentários nas linhas seguintes
-            status = "Não Executado"
-            comments = ""
-            for j in range(i, min(i + 10, len(lines))):
-                status_match_res = regex_status_res.search(lines[j])
-                status_match_est = regex_status_est.search(lines[j])
-                comments_match = regex_comments.search(lines[j])
-                
-                if status_match_res:
-                    status = status_match_res.group(1).strip()
-                if status_match_est:
-                    status = status_match_est.group(1).strip()
-                if comments_match:
-                    comments = comments_match.group(1).strip()
-
-            if current_story_id != "Não Identificado":
-                raw_test_data.append({
-                    'platform': current_platform,
-                    'story_id': current_story_id,
-                    'story_title': current_story_title,
-                    'test_case_id': test_case_id,
-                    'test_case_name': test_case_name,
-                    'status': status,
-                    'comments': comments
-                })
-            
+            temp_test_case_info = {
+                'platform': current_platform,
+                'story_id': current_story_id,
+                'story_title': current_story_title,
+                'test_case_id': test_case_id,
+                'test_case_name': test_case_name,
+                'status': 'Não Executado',
+                'comments': ''
+            }
             continue
+
+        # Procurar pelo status e comentários nas linhas seguintes após encontrar um caso de teste
+        status_match_res = regex_status_res.search(line)
+        status_match_est = regex_status_est.search(line)
+        comments_match = regex_comments.search(line)
+        
+        if temp_test_case_info:
+            if status_match_res:
+                temp_test_case_info['status'] = status_match_res.group(1).strip()
+                raw_test_data.append(temp_test_case_info)
+                temp_test_case_info = {}
+                continue
+            if status_match_est:
+                temp_test_case_info['status'] = status_match_est.group(1).strip()
+                raw_test_data.append(temp_test_case_info)
+                temp_test_case_info = {}
+                continue
+            if comments_match:
+                temp_test_case_info['comments'] = comments_match.group(1).strip()
+                
+    # Adiciona o último caso de teste se ele foi encontrado mas o status não foi
+    if temp_test_case_info:
+        raw_test_data.append(temp_test_case_info)
 
     if not raw_test_data:
         st.warning("Não foi possível identificar testes no arquivo. Verifique se o formato do PDF é o esperado.")
