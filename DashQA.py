@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -84,10 +83,11 @@ def process_extracted_data(extracted_data):
     # Variáveis para rastrear a história atual
     current_story_id = "Não Identificado"
     
-    # Regex para identificar padrões
-    regex_story = re.compile(r'Suite de Testes\s*:\s*(ECPU-\d+)\s*')
-    regex_test_case = re.compile(r'Caso de Teste\s*(ECPU-\d+):\s*(.*)')
+    # Regex para identificar padrões de história (ex: ECPU-213, ECOMAPP-3592)
+    regex_story = re.compile(r'Suite de Testes\s*:\s*([A-Z]+-\d+)')
+    # Regex para identificar o resultado da execução
     regex_status_res = re.compile(r'Resultado da Execução:\s*(\w+)')
+    # Regex para identificar o estado da execução
     regex_status_est = re.compile(r'Estado da\s*Execução:\s*(\w+)')
 
     for line in lines:
