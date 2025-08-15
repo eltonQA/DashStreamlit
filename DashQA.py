@@ -1,3 +1,8 @@
+"""
+QA Dashboard App - Aplicativo para análise de métricas de QA a partir de PDFs
+Versão otimizada para Streamlit Cloud
+"""
+# Alterado para corrigir duplicidade de IDs e melhorar o agrupamento.
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -13,7 +18,7 @@ import random
 # Configuração da página
 st.set_page_config(
     page_title="QA Dashboard",
-    page_icon="📊",
+    page_icon="�",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -488,3 +493,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+�
