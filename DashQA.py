@@ -93,6 +93,8 @@ def process_extracted_data(extracted_data):
     regex_status_res = re.compile(r'Resultado da Execução:\s*(\w+)')
     # Regex para identificar o estado da execução
     regex_status_est = re.compile(r'Estado da\s*Execução:\s*(\w+)')
+    # Regex para identificar o caso de teste para garantir que estamos lendo um teste real
+    regex_test_case_id = re.compile(r'Caso de Teste\s*([A-Z]+-\d+):\s*(.*)')
 
     for line in lines:
         line = line.strip()
@@ -109,18 +111,24 @@ def process_extracted_data(extracted_data):
             current_story_id = story_match.group(1).strip()
             current_story_title = story_match.group(2).strip()
             continue
-
+            
         # Tenta encontrar o status do teste. O status pode estar após
         # 'Resultado da Execução:' ou 'Estado da Execução:'.
         status_match = regex_status_res.search(line) or regex_status_est.search(line)
+        test_case_match = regex_test_case_id.search(line)
+        
         if status_match:
             status = status_match.group(1).strip()
-            raw_test_data.append({
-                'platform': current_platform,
-                'story_id': current_story_id,
-                'story_title': current_story_title,
-                'status': status
-            })
+            
+            # Adiciona o caso de teste apenas se um status for encontrado e se houver um agrupamento
+            # de história válido.
+            if current_story_id != "Não Identificado":
+                 raw_test_data.append({
+                    'platform': current_platform,
+                    'story_id': current_story_id,
+                    'story_title': current_story_title,
+                    'status': status
+                })
             continue
 
     if not raw_test_data:
@@ -360,7 +368,7 @@ def display_dashboard(processed_data, genai_instance=None):
                 story_kpis["Percentual de Sucesso"] = (story_kpis["Casos Passados"] / story_kpis["Casos Executados"]) * 100 if story_kpis["Casos Executados"] > 0 else 0
                 
                 # Expander para cada história
-                with st.expander(f"� {story_id} - {story_title}"):
+                with st.expander(f"📚 {story_id} - {story_title}"):
                     st.markdown(f"**KPIs para a História:** `{story_title}`")
                     col1, col2 = st.columns(2)
                     with col1:
