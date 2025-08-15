@@ -1,0 +1,17 @@
+# QA Dashboard App - Requisitos para Streamlit Cloud
+# Core dependencies
+pandas>=2.0.0
+numpy>=1.26.0
+pypdf2>=3.0.0
+pdfplumber>=0.11.0
+
+# Dashboard and visualization
+streamlit>=1.2.0
+plotly>=5.15.0
+
+# Google AI (opcional - funciona sem chave)
+google-generativeai
+
+# Pillow para processamento de imagem básico
+Pillow>=7.1.0
+
