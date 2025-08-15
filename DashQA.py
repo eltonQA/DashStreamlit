@@ -18,7 +18,7 @@ import random
 # Configuração da página
 st.set_page_config(
     page_title="QA Dashboard",
-    page_icon="�",
+    page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -343,7 +343,9 @@ def display_dashboard(processed_data, genai_instance=None):
         return
 
     for platform in sorted(unique_platforms):
-        with st.expander(f"📱💻 {platform}"):
+        # Gerar uma chave única para o expander da plataforma
+        platform_key = f"platform-{platform}"
+        with st.expander(f"📱💻 {platform}", expanded=True):
             platform_data = df_platform_stories[df_platform_stories['platform'] == platform]
             
             unique_stories = platform_data[['story_id', 'story_title']].drop_duplicates().sort_values(by='story_id')
@@ -355,6 +357,9 @@ def display_dashboard(processed_data, genai_instance=None):
             for index, story in unique_stories.iterrows():
                 story_id = story['story_id']
                 story_title = story['story_title']
+                
+                # Gerar uma chave única para o expander da história
+                story_key = f"story-{platform}-{story_id}"
                 
                 # Filtra os dados para a história atual
                 story_data = platform_data[platform_data['story_id'] == story_id]
@@ -373,7 +378,7 @@ def display_dashboard(processed_data, genai_instance=None):
                 story_kpis["Percentual de Sucesso"] = (story_kpis["Casos Passados"] / story_kpis["Casos Executados"]) * 100 if story_kpis["Casos Executados"] > 0 else 0
                 
                 # Expander para cada história
-                with st.expander(f"📚 {story_id} - {story_title}"):
+                with st.expander(f"📚 {story_id} - {story_title}", expanded=False):
                     st.markdown(f"**KPIs para a História:** `{story_title}`")
                     col1, col2 = st.columns(2)
                     with col1:
