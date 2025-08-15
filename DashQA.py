@@ -3,6 +3,7 @@ QA Dashboard App - Aplicativo para análise de métricas de QA a partir de PDFs
 Versão otimizada para Streamlit Cloud
 """
 # Alterado para corrigir duplicidade de IDs e melhorar o agrupamento.
+# Adicionada extração do nome completo do caso de teste e comentários.
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -98,10 +99,13 @@ def processar_dados_extraidos(extracted_data):
     regex_status_res = re.compile(r'Resultado da Execução:\s*(\w+)')
     # Regex para identificar o estado da execução
     regex_status_est = re.compile(r'Estado da\s*Execução:\s*(\w+)')
-    # Regex para identificar o caso de teste para garantir que estamos lendo um teste real
-    regex_test_case_id = re.compile(r'Caso de Teste\s*([A-Z]+-\d+):\s*(.*)')
+    # Regex para identificar o nome completo do caso de teste e seu ID
+    regex_test_case = re.compile(r'Caso de Teste\s*([A-Z]+-\d+):\s*(.*)\s*\[Versão.*\]')
+    # Regex para identificar comentários
+    regex_comments = re.compile(r'Comentários\s*(.*)\s*https:\/\/.*')
 
-    for line in lines:
+
+    for i, line in enumerate(lines):
         line = line.strip()
         
         # Tenta encontrar a plataforma para atualizar o agrupamento
@@ -116,27 +120,38 @@ def processar_dados_extraidos(extracted_data):
             current_story_id = story_match.group(1).strip()
             current_story_title = story_match.group(2).strip()
             continue
-            
-        # Tenta encontrar o status do teste. O status pode estar após
-        # 'Resultado da Execução:' ou 'Estado da Execução:'.
-        status_match = regex_status_res.search(line) or regex_status_est.search(line)
-        test_case_match = regex_test_case_id.search(line)
         
+        # Tenta encontrar o caso de teste e seu status em uma linha ou nas próximas
+        test_case_match = regex_test_case.search(line)
         if test_case_match:
+            test_case_id = test_case_match.group(1).strip()
             test_case_name = test_case_match.group(2).strip()
-            # Procurar pelo status na linha seguinte ou nas proximidades
-            # Simplificação: assume que o status está na mesma linha ou na próxima
-            status_match_in_line = regex_status_res.search(line) or regex_status_est.search(line)
-            if status_match_in_line:
-                status = status_match_in_line.group(1).strip()
-                if current_story_id != "Não Identificado":
-                    raw_test_data.append({
-                        'platform': current_platform,
-                        'story_id': current_story_id,
-                        'story_title': current_story_title,
-                        'test_case': test_case_name,
-                        'status': status
-                    })
+            
+            # Procurar pelo status e comentários nas linhas seguintes
+            status = "Não Executado"
+            comments = ""
+            for j in range(i, min(i + 10, len(lines))):
+                status_match_res = regex_status_res.search(lines[j])
+                status_match_est = regex_status_est.search(lines[j])
+                comments_match = regex_comments.search(lines[j])
+                
+                if status_match_res:
+                    status = status_match_res.group(1).strip()
+                if status_match_est:
+                    status = status_match_est.group(1).strip()
+                if comments_match:
+                    comments = comments_match.group(1).strip()
+
+            if current_story_id != "Não Identificado":
+                raw_test_data.append({
+                    'platform': current_platform,
+                    'story_id': current_story_id,
+                    'story_title': current_story_title,
+                    'test_case_id': test_case_id,
+                    'test_case_name': test_case_name,
+                    'status': status,
+                    'comments': comments
+                })
             
             continue
 
@@ -145,7 +160,8 @@ def processar_dados_extraidos(extracted_data):
         return {
             "df_status": pd.DataFrame(),
             "kpis": {},
-            "df_stories": pd.DataFrame()
+            "df_stories": pd.DataFrame(),
+            "df_platform_stories": pd.DataFrame()
         }
 
     df_stories = pd.DataFrame(raw_test_data)
@@ -381,7 +397,7 @@ def exibir_dashboard(processed_data, genai_instance=None):
                 story_kpis["Percentual de Sucesso"] = (story_kpis["Casos Passados"] / story_kpis["Casos Executados"]) * 100 if story_kpis["Casos Executados"] > 0 else 0
                 
                 # Expander para cada história
-                with st.expander(f"📚 {story_id} - {story_title}", expanded=False, key=story_key):
+                with st.expander(f"📚 {story_id} - {story_title}", expanded=False):
                     st.markdown(f"**KPIs para a História:** `{story_title}`")
                     col1, col2 = st.columns(2)
                     with col1:
@@ -415,7 +431,8 @@ def exibir_dashboard(processed_data, genai_instance=None):
                         st.plotly_chart(fig_bar, use_container_width=True, key=f"bar-{platform}-{story_id}")
                     
                     st.subheader("Dados Detalhados")
-                    st.dataframe(story_data.rename(columns={'status': 'Status'}), use_container_width=True)
+                    # Exibe a tabela detalhada com o nome do caso de teste
+                    st.dataframe(story_data[['test_case_id', 'test_case_name', 'status', 'comments']].rename(columns={'test_case_id': 'ID', 'test_case_name': 'Nome do Caso de Teste', 'status': 'Status', 'comments': 'Comentários'}), use_container_width=True)
     
     st.subheader("💾 Exportar Dados Completos")
     csv = df_stories.to_csv(index=False)
@@ -436,6 +453,9 @@ def exibir_dashboard_exemplo():
         'story_id': ['ECPU-213', 'ECPU-213', 'ECPU-213', 'ECPU-94', 'ECPU-94'],
         'story_title': ['Incluir informações de parcelamento...', 'Incluir informações de parcelamento...', 'Incluir informações de parcelamento...', 'Validar exibição de parcelamento...', 'Validar exibição de parcelamento...'],
         'status': ['Passou', 'Falhado', 'Bloqueado', 'Passou', 'Falhado'],
+        'test_case_id': ['ECPU-220', 'ECPU-221', 'ECPU-222', 'ECPU-94', 'ECPU-95'],
+        'test_case_name': ['CT01: Verificar que o banner informativo está de acordo com o figma', 'CT02: Verificar que o banner informativo não aparece para usuários que não são cliente único', 'CT03: Verificar que o banner informativo não aparece para usuários que não sincronizaram os pedidos', 'Validar exibição de parcelamento no resumo do pedido com cupom', 'Validar exibição de parcelamento no resumo do pedido com cupom'],
+        'comments': ['', 'bug fixado', 'falha de ambiente', '', 'bug aberto'],
         'Total': [1, 1, 1, 1, 1]
     })
     
