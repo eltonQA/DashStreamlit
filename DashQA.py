@@ -315,17 +315,18 @@ def display_overall_dashboard(df_status, kpis):
         'Casos': [10, 2, 1, 8, 3, 2]
     })
     
-    fig_3d = go.Figure(data=[go.Bar3d(
-        x=df_3d['Categoria'],
-        y=df_3d['Time'],
-        z=df_3d['Casos'],
-        marker=dict(
-            color=['green', 'red', 'yellow', 'green', 'red', 'yellow'],
-        ),
-    )])
-
+    # Alteração para usar px.bar com o argumento 3d
+    fig_3d = px.bar(
+        df_3d, 
+        x='Categoria', 
+        y='Time', 
+        z='Casos', 
+        color='Categoria', 
+        color_discrete_map=custom_colors,
+        title='Casos por Status e Equipe (Exemplo 3D)'
+    )
+    
     fig_3d.update_layout(
-        title='Casos por Status e Equipe (Exemplo 3D)',
         scene=dict(
             xaxis_title='Status',
             yaxis_title='Equipe',
