@@ -1,8 +1,3 @@
-"""
-QA Dashboard App - Aplicativo para análise de métricas de QA a partir de PDFs
-Versão otimizada para Streamlit Cloud
-"""
-# Alterado para corrigir duplicidade de IDs e melhorar o agrupamento.
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -32,7 +27,7 @@ except ImportError:
     genai = None
 
 # --- Configuração da API de IA ---
-def configure_ai():
+def configurar_ai():
     """Configura a API de IA se disponível"""
     if not GENAI_AVAILABLE:
         return None
@@ -63,7 +58,7 @@ def configure_ai():
     return None
 
 # --- Funções de extração de dados ---
-def extract_text_from_pdf(pdf_file):
+def extrair_texto_do_pdf(pdf_file):
     """Extrai texto de um arquivo PDF"""
     text = ""
     try:
@@ -74,7 +69,7 @@ def extract_text_from_pdf(pdf_file):
         st.error(f"Erro ao extrair texto: {e}")
     return text
 
-def process_extracted_data(extracted_data):
+def processar_dados_extraidos(extracted_data):
     """
     Processa os dados extraídos, agrupa por história e calcula métricas.
     A lógica agora é baseada na identificação de padrões de texto.
@@ -176,7 +171,7 @@ def process_extracted_data(extracted_data):
     }
 
 # --- Funções para gerar texto com IA ---
-def get_inspirational_quote():
+def obter_frase_inspiradora():
     """Retorna uma frase inspiradora aleatória."""
     quotes = [
         ("O fracasso é uma opção. Se as coisas não estão a falhar, você não está a inovar o suficiente.", "Elon Musk"),
@@ -188,7 +183,7 @@ def get_inspirational_quote():
     quote, author = random.choice(quotes)
     return f"*{quote}* - {author}"
 
-def generate_ai_text(df_platform_stories, kpis, genai_instance):
+def gerar_texto_ai(df_platform_stories, kpis, genai_instance):
     """Gera resumo usando IA, agora com detalhamento por história."""
     if not genai_instance:
         return "Erro: IA não configurada ou indisponível."
@@ -239,7 +234,7 @@ Regras de formatação:
         response = model.generate_content(prompt)
         
         # Adiciona a frase inspiradora no final
-        inspirational_quote = get_inspirational_quote()
+        inspirational_quote = obter_frase_inspiradora()
         return f"{response.text}\n\n{inspirational_quote}"
     except Exception as e:
         return f"Erro ao gerar texto: {e}"
@@ -253,7 +248,7 @@ custom_colors = {
     'Não Executado': '#0000FF'# Azul
 }
 
-def display_kpis(kpis):
+def exibir_kpis(kpis):
     """Exibe os KPIs principais em colunas."""
     col1, col2, col3, col4 = st.columns(4)
     with col1:
@@ -277,10 +272,10 @@ def display_kpis(kpis):
             value=f"{kpis.get('Percentual de Sucesso', 0):.1f}%"
         )
         
-def display_overall_dashboard(df_status, kpis):
+def exibir_dashboard_geral(df_status, kpis):
     """Exibe o dashboard geral com gráficos 2D e 3D."""
     st.header("📈 Dashboard Geral de Testes")
-    display_kpis(kpis)
+    exibir_kpis(kpis)
     
     col1, col2 = st.columns(2)
     with col1:
@@ -310,7 +305,7 @@ def display_overall_dashboard(df_status, kpis):
     st.markdown("---")
 
 
-def display_dashboard(processed_data, genai_instance=None):
+def exibir_dashboard(processed_data, genai_instance=None):
     """Exibe o dashboard principal com agrupamento por plataforma e história."""
     df_status = processed_data["df_status"]
     df_stories = processed_data["df_stories"]
@@ -318,14 +313,14 @@ def display_dashboard(processed_data, genai_instance=None):
     kpis = processed_data["kpis"]
 
     # Seção de KPIs Gerais
-    display_overall_dashboard(df_status, kpis)
+    exibir_dashboard_geral(df_status, kpis)
     
     # Seção de Geração de Texto com IA
     if genai_instance and GENAI_AVAILABLE:
         st.header("🤖 Gerar Resumo para Teams com IA")
         if st.button("✨ Gerar Resumo"):
             with st.spinner("Gerando texto com IA..."):
-                ai_text = generate_ai_text(df_platform_stories, kpis, genai_instance)
+                ai_text = gerar_texto_ai(df_platform_stories, kpis, genai_instance)
                 st.text_area(
                     "Texto gerado (copie e cole no Teams):", 
                     ai_text, 
@@ -423,7 +418,7 @@ def display_dashboard(processed_data, genai_instance=None):
         mime="text/csv"
     )
 
-def display_sample_dashboard():
+def exibir_dashboard_exemplo():
     """Exibe dashboard de exemplo com a nova estrutura."""
     st.header("📊 Dashboard de Exemplo")
     st.info("Este é um exemplo de como o dashboard aparecerá com dados de um relatório com histórias de teste.")
@@ -453,7 +448,7 @@ def display_sample_dashboard():
 
     df_status = sample_data.groupby('status').size().reset_index(name='Total').rename(columns={'status': 'Status'})
     
-    display_dashboard({
+    exibir_dashboard({
         "df_status": df_status,
         "kpis": kpis,
         "df_stories": sample_data, # df_stories agora é o df_platform_stories
@@ -466,7 +461,7 @@ def main():
     st.title("📊 QA Dashboard - Análise de Métricas de Testes")
     st.markdown("---")
     
-    genai_instance = configure_ai()
+    genai_instance = configurar_ai()
     
     st.sidebar.header("📁 Upload de Arquivo PDF")
     uploaded_file = st.sidebar.file_uploader(
@@ -480,21 +475,21 @@ def main():
             extracted_data = {}
             # Como a extração de tabelas está fora de uso na nova lógica,
             # focamos apenas na extração de texto
-            extracted_data["text"] = extract_text_from_pdf(uploaded_file)
+            extracted_data["text"] = extrair_texto_do_pdf(uploaded_file)
             
             # Se o texto for extraído, processamos os dados
             if extracted_data["text"]:
-                processed_data = process_extracted_data(extracted_data)
+                processed_data = processar_dados_extraidos(extracted_data)
                 
                 if not processed_data["df_stories"].empty:
-                    display_dashboard(processed_data, genai_instance)
+                    exibir_dashboard(processed_data, genai_instance)
                 else:
                     st.error("Não foi possível agrupar os testes por história. Verifique se o arquivo segue o padrão esperado.")
             else:
                 st.error("Não foi possível extrair dados válidos do PDF.")
     else:
         st.info("👈 Faça upload de um arquivo PDF para visualizar as métricas de QA")
-        display_sample_dashboard()
+        exibir_dashboard_exemplo()
 
 if __name__ == "__main__":
     main()
