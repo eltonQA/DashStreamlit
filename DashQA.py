@@ -1,7 +1,3 @@
-"""
-QA Dashboard App - Aplicativo para análise de métricas de QA a partir de PDFs
-Versão otimizada para Streamlit Cloud com exibição do nome da história
-"""
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -17,7 +13,7 @@ import random
 # Configuração da página
 st.set_page_config(
     page_title="QA Dashboard",
-    page_icon="�",
+    page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -338,7 +334,7 @@ def display_dashboard(processed_data, genai_instance=None):
         
         # Expander para cada história
         with st.expander(f"📚 {story_id} - {story_title}"):
-            st.markdown(f"**KPIs para a História:** `{story_id} - {story_title}`")
+            st.markdown(f"**KPIs para a História:** `{story_title}`")
             col1, col2 = st.columns(2)
             with col1:
                 st.metric("Total de Casos", story_kpis["Total de Casos de Teste"])
