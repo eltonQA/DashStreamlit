@@ -1,7 +1,3 @@
-"""
-QA Dashboard App - Aplicativo para análise de métricas de QA a partir de PDFs
-Versão otimizada para Streamlit Cloud com cores personalizadas e gráficos 3D
-"""
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -306,38 +302,6 @@ def display_overall_dashboard(df_status, kpis):
         )
         fig_bar.update_layout(showlegend=False)
         st.plotly_chart(fig_bar, use_container_width=True)
-    st.markdown("---")
-    
-    # Nova seção para o gráfico 3D
-    st.header("🧊 Gráfico de Exemplo 3D")
-    st.info("Este é um gráfico de barras 3D interativo. Você pode girá-lo e interagir com ele.")
-    
-    # Dados de exemplo para o gráfico 3D
-    df_3d = pd.DataFrame({
-        'Categoria': ['Passou', 'Falhado', 'Bloqueado', 'Passou', 'Falhado', 'Bloqueado'],
-        'Time': ['Frontend', 'Frontend', 'Frontend', 'Backend', 'Backend', 'Backend'],
-        'Casos': [10, 2, 1, 8, 3, 2]
-    })
-    
-    # Código corrigido para Bar3d
-    fig_3d = go.Figure(data=[go.Bar3d(
-        x=df_3d['Categoria'],
-        y=df_3d['Time'],
-        z=df_3d['Casos'],
-        marker=dict(
-            color=['green', 'red', 'yellow', 'green', 'red', 'yellow'],
-        ),
-    )])
-    
-    fig_3d.update_layout(
-        title='Casos por Status e Equipe (Exemplo 3D)',
-        scene=dict(
-            xaxis_title='Status',
-            yaxis_title='Equipe',
-            zaxis_title='Total de Casos'
-        )
-    )
-    st.plotly_chart(fig_3d, use_container_width=True)
     st.markdown("---")
 
 
