@@ -288,7 +288,7 @@ def exibir_dashboard_geral(df_status, kpis):
             color_discrete_map=custom_colors
         )
         fig_pie.update_traces(textposition='inside', textinfo='percent+label')
-        st.plotly_chart(fig_pie, use_container_width=True)
+        st.plotly_chart(fig_pie, use_container_width=True, key="geral-pie")
     
     with col2:
         st.subheader("📈 Casos por Status (Geral)")
@@ -301,7 +301,7 @@ def exibir_dashboard_geral(df_status, kpis):
             color_discrete_map=custom_colors
         )
         fig_bar.update_layout(showlegend=False)
-        st.plotly_chart(fig_bar, use_container_width=True)
+        st.plotly_chart(fig_bar, use_container_width=True, key="geral-bar")
     st.markdown("---")
 
 
@@ -392,7 +392,7 @@ def exibir_dashboard(processed_data, genai_instance=None):
                             color_discrete_map=custom_colors
                         )
                         fig_pie.update_traces(textposition='inside', textinfo='percent+label')
-                        st.plotly_chart(fig_pie, use_container_width=True)
+                        st.plotly_chart(fig_pie, use_container_width=True, key=f"pie-{story_id}")
                     
                     with col2:
                         fig_bar = px.bar(
@@ -404,7 +404,7 @@ def exibir_dashboard(processed_data, genai_instance=None):
                             color_discrete_map=custom_colors
                         )
                         fig_bar.update_layout(showlegend=False)
-                        st.plotly_chart(fig_bar, use_container_width=True)
+                        st.plotly_chart(fig_bar, use_container_width=True, key=f"bar-{story_id}")
                     
                     st.subheader("Dados Detalhados")
                     st.dataframe(story_data.rename(columns={'status': 'Status'}), use_container_width=True)
