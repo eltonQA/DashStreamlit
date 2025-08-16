@@ -43,7 +43,7 @@ def configurar_ai():
         if hasattr(st, 'secrets'):
             api_key = st.secrets.get("GOOGLE_API_KEY", None)
     except Exception:
-        api_key = None
+        api_key = api_key
     
     if not api_key:
         with st.sidebar.expander("🤖 Configuração de IA (Opcional)"):
@@ -81,6 +81,9 @@ def processar_dados_extraidos(extracted_data):
     A lógica agora é baseada na identificação de padrões de texto.
     """
     text_data = extracted_data["text"]
+    
+    # Substituir quebras de linha que não fazem parte de uma tabela por um espaço
+    text_data = re.sub(r'([a-z])\s*\n\s*([a-z])', r'\1 \2', text_data)
     lines = text_data.split('\n')
     
     # Lista para armazenar os dados brutos de todos os casos de teste
@@ -95,72 +98,61 @@ def processar_dados_extraidos(extracted_data):
     regex_platform = re.compile(r'\d+\. Plataforma:\s*(.*)')
     # Regex para identificar padrões de história (ex: ECPU-213: Incluir informações...)
     regex_story = re.compile(r'Suite de Testes\s*:\s*([A-Z]+-\d+)\s*(.*)')
-    # Regex para identificar o resultado da execução
-    regex_status_res = re.compile(r'Resultado da Execução:\s*(\w+)')
-    # Regex para identificar o estado da execução
-    regex_status_est = re.compile(r'Estado da\s*Execução:\s*(\w+)')
     # Regex para identificar o nome completo do caso de teste e seu ID
     regex_test_case = re.compile(r'Caso de Teste\s*([A-Z]+-\d+):\s*(.*)')
-    # Regex para identificar comentários
-    regex_comments = re.compile(r'Comentários\s*(.*)\s*https:\/\/.*')
+    # Regex para identificar o resultado da execução e o estado da execução
+    regex_status_res = re.compile(r'(?:Resultado da Execução|Estado da Execução):\s*(\w+)', re.IGNORECASE)
+    # Regex para identificar comentários e o link do Jira
+    regex_comments = re.compile(r'Comentários\s*(.*?)?\s*(https:\/\/.*)?', re.DOTALL | re.IGNORECASE)
 
-    
-    temp_test_case_info = {}
 
     for i, line in enumerate(lines):
         line = line.strip()
         
-        # Tenta encontrar a plataforma para atualizar o agrupamento
         platform_match = regex_platform.search(line)
         if platform_match:
             current_platform = platform_match.group(1).strip()
             continue
 
-        # Tenta encontrar a história para atualizar o agrupamento
         story_match = regex_story.search(line)
         if story_match:
             current_story_id = story_match.group(1).strip()
             current_story_title = story_match.group(2).strip()
             continue
         
-        # Tenta encontrar o caso de teste e seu status em uma linha ou nas próximas
         test_case_match = regex_test_case.search(line)
         if test_case_match:
             test_case_id = test_case_match.group(1).strip()
             test_case_name = test_case_match.group(2).strip()
-            temp_test_case_info = {
-                'platform': current_platform,
-                'story_id': current_story_id,
-                'story_title': current_story_title,
-                'test_case_id': test_case_id,
-                'test_case_name': test_case_name,
-                'status': 'Não Executado',
-                'comments': ''
-            }
-            continue
+            
+            status = "Não Executado"
+            comments = ""
+            
+            # Procurar por status e comentários nas 10 linhas seguintes
+            for j in range(i, min(i + 15, len(lines))):
+                sub_line = lines[j].strip()
+                status_match = regex_status_res.search(sub_line)
+                if status_match:
+                    status = status_match.group(1).strip()
 
-        # Procurar pelo status e comentários nas linhas seguintes após encontrar um caso de teste
-        status_match_res = regex_status_res.search(line)
-        status_match_est = regex_status_est.search(line)
-        comments_match = regex_comments.search(line)
-        
-        if temp_test_case_info:
-            if status_match_res:
-                temp_test_case_info['status'] = status_match_res.group(1).strip()
-                raw_test_data.append(temp_test_case_info)
-                temp_test_case_info = {}
-                continue
-            if status_match_est:
-                temp_test_case_info['status'] = status_match_est.group(1).strip()
-                raw_test_data.append(temp_test_case_info)
-                temp_test_case_info = {}
-                continue
-            if comments_match:
-                temp_test_case_info['comments'] = comments_match.group(1).strip()
-                
-    # Adiciona o último caso de teste se ele foi encontrado mas o status não foi
-    if temp_test_case_info:
-        raw_test_data.append(temp_test_case_info)
+                comments_match = regex_comments.search(sub_line)
+                if comments_match:
+                    comments = comments_match.group(1).strip()
+                    if comments == "" and comments_match.group(2):
+                        comments = comments_match.group(2).strip()
+
+            if current_story_id != "Não Identificado":
+                 raw_test_data.append({
+                    'platform': current_platform,
+                    'story_id': current_story_id,
+                    'story_title': current_story_title,
+                    'test_case_id': test_case_id,
+                    'test_case_name': test_case_name,
+                    'status': status,
+                    'comments': comments
+                })
+            
+            continue
 
     if not raw_test_data:
         st.warning("Não foi possível identificar testes no arquivo. Verifique se o formato do PDF é o esperado.")
