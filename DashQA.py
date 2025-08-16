@@ -1,7 +1,3 @@
-"""
-QA Dashboard App - Aplicativo para análise de métricas de QA a partir de PDFs
-Versão otimizada para Streamlit Cloud com cores personalizadas
-"""
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -17,7 +13,7 @@ import random
 # Configuração da página
 st.set_page_config(
     page_title="QA Dashboard",
-    page_icon="📊",
+    page_icon="�",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -81,72 +77,48 @@ def process_extracted_data(extracted_data):
     text_data = extracted_data["text"]
     lines = text_data.split('\n')
     
-    # Listas para armazenar os dados brutos e agrupados
+    # Lista para armazenar os dados brutos de todos os casos de teste
     raw_test_data = []
     
-    # Variáveis para rastrear a história e o caso de teste atuais
+    # Variáveis para rastrear a história atual
     current_story_id = "Não Identificado"
+    current_story_title = "Não Identificado"
     
-    # Regex para identificar padrões
-    # 'Suite de Testes : ECOMDGT-9755: Refatoração de Meus pedidos 1'
-    regex_story = re.compile(r'Suite de Testes\s*:\s*(ECOMDGT-\d+):\s*(.*)')
-    # 'Caso de Teste ECMA-220: CT01: ...'
-    regex_test_case = re.compile(r'Caso de Teste\s*(ECMA-\d+):\s*(.*)')
-    # 'Resultado da Execução: Falhado'
-    regex_status = re.compile(r'Resultado da Execução:\s*(\w+)')
-    # 'Estado da Execução: Passou'
-    regex_status_alt = re.compile(r'Estado da\s*Execução:\s*(\w+)')
+    # Regex para identificar padrões de história (ex: ECPU-213: Incluir informações...)
+    regex_story = re.compile(r'Suite de Testes\s*:\s*([A-Z]+-\d+)\s*(.*)')
+    # Regex para identificar o resultado da execução
+    regex_status_res = re.compile(r'Resultado da Execução:\s*(\w+)')
+    # Regex para identificar o estado da execução
+    regex_status_est = re.compile(r'Estado da\s*Execução:\s*(\w+)')
 
     for line in lines:
         line = line.strip()
         
-        # Tenta encontrar a história
+        # Tenta encontrar a história para atualizar o agrupamento
         story_match = regex_story.search(line)
         if story_match:
             current_story_id = story_match.group(1).strip()
+            current_story_title = story_match.group(2).strip()
             continue
-            
-        # Tenta encontrar o status do teste.
-        # A lógica aqui é que o status geralmente está após o "Caso de Teste"
-        status_match = regex_status.search(line) or regex_status_alt.search(line)
+
+        # Tenta encontrar o status do teste. O status pode estar após
+        # 'Resultado da Execução:' ou 'Estado da Execução:'.
+        status_match = regex_status_res.search(line) or regex_status_est.search(line)
         if status_match:
             status = status_match.group(1).strip()
             raw_test_data.append({
                 'story_id': current_story_id,
+                'story_title': current_story_title,
                 'status': status
             })
             continue
 
     if not raw_test_data:
-        # Fallback para a lógica anterior se a nova não encontrar nada
-        st.warning("Não foi possível identificar as histórias de teste. Usando o modo de extração básico.")
-        status_keywords = ["Passou", "Falhado", "Bloqueado", "Não Executado", "Falhou"]
-        status_counts = {keyword: 0 for keyword in status_keywords}
-        for keyword in status_keywords:
-            status_counts[keyword] += text_data.count(keyword)
-        
-        df_status = pd.DataFrame(list(status_counts.items()), columns=["Status", "Total"])
-        df_status = df_status[df_status["Total"] > 0]
-        
-        kpis = {}
-        if not df_status.empty:
-            total_cases = df_status["Total"].sum()
-            passed_cases = df_status[df_status["Status"].str.contains("Passou", case=False, na=False)]["Total"].sum()
-            executed_cases = df_status[~df_status["Status"].str.contains("Não Executado", case=False, na=False)]["Total"].sum()
-            percent_execution = (executed_cases / total_cases) * 100 if total_cases > 0 else 0
-            percent_success = (passed_cases / executed_cases) * 100 if executed_cases > 0 else 0
-            kpis = {
-                "Total de Casos de Teste": total_cases,
-                "Casos Passados": passed_cases,
-                "Casos Executados": executed_cases,
-                "Percentual de Execucao": percent_execution,
-                "Percentual de Sucesso": percent_success
-            }
-        
+        st.warning("Não foi possível identificar testes no arquivo. Verifique se o formato do PDF é o esperado.")
         return {
-            "df_status": df_status,
-            "kpis": kpis,
-            "df_stories": pd.DataFrame() # Retorna um dataframe vazio para compatibilidade
+            "df_status": pd.DataFrame(),
+            "kpis": {},
+            "df_stories": pd.DataFrame()
         }
 
     df_stories = pd.DataFrame(raw_test_data)
@@ -155,7 +127,7 @@ def process_extracted_data(extracted_data):
     df_stories['status'] = df_stories['status'].replace('Falhou', 'Falhado')
     
     # Agrupa por história e status para criar a tabela de dados
-    grouped_data = df_stories.groupby(['story_id', 'status']).size().reset_index(name='Total')
+    grouped_data = df_stories.groupby(['story_id', 'story_title', 'status']).size().reset_index(name='Total')
 
     # Calcula KPIs totais
     total_cases = len(df_stories)
@@ -220,14 +192,14 @@ Regras de formatação:
 - Resumo por História:
 """
         # Agrupar e formatar o resumo por história
-        stories_summary = df_stories.groupby(['story_id', 'status']).size().unstack(fill_value=0)
+        stories_summary = df_stories.groupby(['story_id', 'story_title', 'status']).size().unstack(fill_value=0)
         
         for index, row in stories_summary.iterrows():
-            story_id = index
+            story_id, story_title = index
             total_story_tests = row.sum()
             
             prompt += f"""
-- **{story_id}**:
+- **{story_id} - {story_title}**:
     - Casos totais: {total_story_tests}
     - Status:
 """
@@ -277,7 +249,7 @@ def display_kpis(kpis):
         )
         
 def display_overall_dashboard(df_status, kpis):
-    """Exibe o dashboard geral."""
+    """Exibe o dashboard geral com gráficos 2D e 3D."""
     st.header("📈 Dashboard Geral de Testes")
     display_kpis(kpis)
     
@@ -334,13 +306,15 @@ def display_dashboard(processed_data, genai_instance=None):
     # Seção de Análise por História
     st.header("📋 Análise Detalhada por História")
 
-    unique_stories = df_stories['story_id'].unique()
+    unique_stories = df_stories[['story_id', 'story_title']].drop_duplicates().sort_values(by='story_id')
     
     if len(unique_stories) == 0:
         st.info("Nenhuma história de teste foi identificada no arquivo.")
         return
 
-    for story_id in sorted(unique_stories):
+    for index, story in unique_stories.iterrows():
+        story_id = story['story_id']
+        story_title = story['story_title']
         
         # Filtra os dados para a história atual
         story_data = df_stories[df_stories['story_id'] == story_id]
@@ -359,8 +333,8 @@ def display_dashboard(processed_data, genai_instance=None):
         story_kpis["Percentual de Sucesso"] = (story_kpis["Casos Passados"] / story_kpis["Casos Executados"]) * 100 if story_kpis["Casos Executados"] > 0 else 0
         
         # Expander para cada história
-        with st.expander(f"📚 {story_id}"):
-            st.markdown(f"**KPIs para a História:** `{story_id}`")
+        with st.expander(f"📚 {story_id} - {story_title}"):
+            st.markdown(f"**KPIs para a História:** `{story_title}`")
             col1, col2 = st.columns(2)
             with col1:
                 st.metric("Total de Casos", story_kpis["Total de Casos de Teste"])
@@ -410,22 +384,23 @@ def display_sample_dashboard():
     st.info("Este é um exemplo de como o dashboard aparecerá com dados de um relatório com histórias de teste.")
 
     sample_data = pd.DataFrame({
-        'story_id': ['ECOMDGT-12128', 'ECOMDGT-12128', 'ECOMDGT-9755', 'ECOMDGT-9755', 'ECOMDGT-9755', 'ECOMDGT-9755'],
-        'status': ['Passou', 'Falhado', 'Passou', 'Falhado', 'Bloqueado', 'Não Executado'],
-        'Total': [2, 1, 3, 1, 1, 1]
+        'story_id': ['ECPU-213', 'ECPU-213', 'ECPU-213', 'ECPU-213', 'ECPU-213', 'ECPU-213'],
+        'story_title': ['Incluir informações...', 'Incluir informações...', 'Incluir informações...', 'Incluir informações...', 'Incluir informações...', 'Incluir informações...'],
+        'status': ['Passou', 'Falhado', 'Bloqueado', 'Não Executado', 'Passou', 'Bloqueado'],
+        'Total': [1, 1, 1, 1, 1, 1]
     })
     
-    grouped_data = sample_data.groupby(['story_id', 'status']).sum().reset_index()
+    grouped_data = sample_data.groupby(['story_id', 'story_title', 'status']).sum().reset_index()
     df_status = sample_data.groupby('status').sum().reset_index().rename(columns={'status': 'Status'})
 
     display_dashboard({
         "df_status": df_status,
         "kpis": {
-            "Total de Casos de Teste": 9,
-            "Casos Passados": 5,
-            "Casos Executados": 7,
-            "Percentual de Execucao": 77.8,
-            "Percentual de Sucesso": 71.4
+            "Total de Casos de Teste": 6,
+            "Casos Passados": 2,
+            "Casos Executados": 4,
+            "Percentual de Execucao": 66.7,
+            "Percentual de Sucesso": 50.0
         },
         "df_stories": grouped_data
     })
