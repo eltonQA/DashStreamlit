@@ -304,11 +304,12 @@ def exibir_dashboard_geral(df_status, kpis):
 def exibir_dashboard(processed_data, genai_instance=None):
     """Exibe o dashboard principal com agrupamento por plataforma e história."""
     df_status = processed_data["df_status"]
+    df_stories = processed_data["df_stories"]
     df_platform_stories = processed_data["df_platform_stories"]
     kpis = processed_data["kpis"]
 
     exibir_dashboard_geral(df_status, kpis)
-
+    
     if genai_instance and GENAI_AVAILABLE:
         st.header("🤖 Gerar Resumo para Teams com IA")
         if st.button("✨ Gerar Resumo"):
