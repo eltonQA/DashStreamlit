@@ -210,24 +210,23 @@ Regras de formatação:
 
 - Resumo por Plataforma e História:
 """
-        platforms_summary = df_platform_stories.groupby(['platform', 'story_id', 'story_title', 'status']).size().unstack(fill_value=0)
+        platforms_summary = df_platform_stories.groupby(['story_id', 'story_title', 'status']).size().unstack(fill_value=0)
         
-        unique_platforms = df_platform_stories['platform'].unique()
-        for platform in sorted(unique_platforms):
-            prompt += f"\n- **Plataforma: {platform}**\n"
+        unique_stories = df_platform_stories[['story_id', 'story_title']].drop_duplicates().sort_values(by='story_id')
+        for index, story in unique_stories.iterrows():
+            story_id = story['story_id']
+            story_title = story['story_title']
             
-            platform_data = platforms_summary.loc[platform]
-            for index, row in platform_data.iterrows():
-                story_id, story_title = index
-                total_story_tests = row.sum()
+            story_data = platforms_summary.loc[(story_id, story_title)]
+            total_story_tests = story_data.sum()
                 
-                prompt += f"""
-    - **{story_id} - {story_title}**:
-        - Casos totais: {total_story_tests}
-        - Status:
+            prompt += f"""
+- **{story_id} - {story_title}**:
+    - Casos totais: {total_story_tests}
+    - Status:
 """
-                for status, count in row.items():
-                    prompt += f"            - {status}: {count}\n"
+            for status, count in story_data.items():
+                prompt += f"        - {status}: {count}\n"
         
         response = model.generate_content(prompt)
         
