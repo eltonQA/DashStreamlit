@@ -2,8 +2,8 @@
 QA Dashboard App - Aplicativo para análise de métricas de QA a partir de PDFs
 Versão otimizada para Streamlit Cloud
 """
-# Alterado para corrigir duplicidade de IDs e melhorar o agrupamento.
-# Adicionada extração do nome completo do caso de teste e comentários.
+# Código revertido para a versão que não inclui agrupamento por plataforma
+# a fim de evitar erros de extração e duplicidade de IDs.
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -43,7 +43,7 @@ def configurar_ai():
         if hasattr(st, 'secrets'):
             api_key = st.secrets.get("GOOGLE_API_KEY", None)
     except Exception:
-        api_key = api_key
+        api_key = None
     
     if not api_key:
         with st.sidebar.expander("🤖 Configuração de IA (Opcional)"):
@@ -77,43 +77,27 @@ def extrair_texto_do_pdf(pdf_file):
 
 def processar_dados_extraidos(extracted_data):
     """
-    Processa os dados extraídos, agrupa por história e calcula métricas.
+    Processa os dados extraídos e calcula métricas.
     A lógica agora é baseada na identificação de padrões de texto.
     """
     text_data = extracted_data["text"]
-    
-    # Substituir quebras de linha que não fazem parte de uma tabela por um espaço
-    text_data = re.sub(r'([a-z])\s*\n\s*([a-z])', r'\1 \2', text_data)
     lines = text_data.split('\n')
     
-    # Lista para armazenar os dados brutos de todos os casos de teste
     raw_test_data = []
     
-    # Variáveis para rastrear a plataforma, história e caso de teste atuais
-    current_platform = "Não Identificado"
     current_story_id = "Não Identificado"
     current_story_title = "Não Identificado"
     
-    # Regex para identificar a plataforma (ex: '1. Plataforma: APP Android')
-    regex_platform = re.compile(r'\d+\. Plataforma:\s*(.*)')
-    # Regex para identificar padrões de história (ex: ECPU-213: Incluir informações...)
     regex_story = re.compile(r'Suite de Testes\s*:\s*([A-Z]+-\d+)\s*(.*)')
-    # Regex para identificar o nome completo do caso de teste e seu ID
     regex_test_case = re.compile(r'Caso de Teste\s*([A-Z]+-\d+):\s*(.*)')
-    # Regex para identificar o resultado da execução e o estado da execução
     regex_status_res = re.compile(r'(?:Resultado da Execução|Estado da Execução):\s*(\w+)', re.IGNORECASE)
-    # Regex para identificar comentários e o link do Jira
     regex_comments = re.compile(r'Comentários\s*(.*?)?\s*(https:\/\/.*)?', re.DOTALL | re.IGNORECASE)
 
+    temp_test_case_info = {}
 
     for i, line in enumerate(lines):
         line = line.strip()
         
-        platform_match = regex_platform.search(line)
-        if platform_match:
-            current_platform = platform_match.group(1).strip()
-            continue
-
         story_match = regex_story.search(line)
         if story_match:
             current_story_id = story_match.group(1).strip()
@@ -124,35 +108,30 @@ def processar_dados_extraidos(extracted_data):
         if test_case_match:
             test_case_id = test_case_match.group(1).strip()
             test_case_name = test_case_match.group(2).strip()
-            
-            status = "Não Executado"
-            comments = ""
-            
-            # Procurar por status e comentários nas 10 linhas seguintes
-            for j in range(i, min(i + 15, len(lines))):
-                sub_line = lines[j].strip()
-                status_match = regex_status_res.search(sub_line)
-                if status_match:
-                    status = status_match.group(1).strip()
-
-                comments_match = regex_comments.search(sub_line)
-                if comments_match:
-                    comments = comments_match.group(1).strip()
-                    if comments == "" and comments_match.group(2):
-                        comments = comments_match.group(2).strip()
-
-            if current_story_id != "Não Identificado":
-                 raw_test_data.append({
-                    'platform': current_platform,
-                    'story_id': current_story_id,
-                    'story_title': current_story_title,
-                    'test_case_id': test_case_id,
-                    'test_case_name': test_case_name,
-                    'status': status,
-                    'comments': comments
-                })
-            
+            temp_test_case_info = {
+                'story_id': current_story_id,
+                'story_title': current_story_title,
+                'test_case_id': test_case_id,
+                'test_case_name': test_case_name,
+                'status': 'Não Executado',
+                'comments': ''
+            }
             continue
+
+        status_match_res = regex_status_res.search(line)
+        comments_match = regex_comments.search(line)
+        
+        if temp_test_case_info:
+            if status_match_res:
+                temp_test_case_info['status'] = status_match_res.group(1).strip()
+                raw_test_data.append(temp_test_case_info)
+                temp_test_case_info = {}
+                continue
+            if comments_match:
+                temp_test_case_info['comments'] = comments_match.group(1).strip()
+                
+    if temp_test_case_info:
+        raw_test_data.append(temp_test_case_info)
 
     if not raw_test_data:
         st.warning("Não foi possível identificar testes no arquivo. Verifique se o formato do PDF é o esperado.")
@@ -165,13 +144,10 @@ def processar_dados_extraidos(extracted_data):
 
     df_stories = pd.DataFrame(raw_test_data)
     
-    # Mapeia 'Falhou' para 'Falhado' para unificar
     df_stories['status'] = df_stories['status'].replace('Falhou', 'Falhado')
     
-    # Agrupa por plataforma, história e status para criar a tabela de dados
-    grouped_data = df_stories.groupby(['platform', 'story_id', 'story_title', 'status']).size().reset_index(name='Total')
+    grouped_data = df_stories.groupby(['story_id', 'story_title', 'status']).size().reset_index(name='Total')
 
-    # Calcula KPIs totais
     total_cases = len(df_stories)
     passed_cases = len(df_stories[df_stories['status'].str.contains("Passou", case=False, na=False)])
     executed_cases = len(df_stories[~df_stories['status'].str.contains("Não Executado", case=False, na=False)])
@@ -234,7 +210,6 @@ Regras de formatação:
 
 - Resumo por Plataforma e História:
 """
-        # Agrupar e formatar o resumo por história
         platforms_summary = df_platform_stories.groupby(['platform', 'story_id', 'story_title', 'status']).size().unstack(fill_value=0)
         
         unique_platforms = df_platform_stories['platform'].unique()
@@ -254,10 +229,8 @@ Regras de formatação:
                 for status, count in row.items():
                     prompt += f"            - {status}: {count}\n"
         
-        # Chamada para a API
         response = model.generate_content(prompt)
         
-        # Adiciona a frase inspiradora no final
         inspirational_quote = obter_frase_inspiradora()
         return f"{response.text}\n\n{inspirational_quote}"
     except Exception as e:
@@ -332,14 +305,11 @@ def exibir_dashboard_geral(df_status, kpis):
 def exibir_dashboard(processed_data, genai_instance=None):
     """Exibe o dashboard principal com agrupamento por plataforma e história."""
     df_status = processed_data["df_status"]
-    df_stories = processed_data["df_stories"]
     df_platform_stories = processed_data["df_platform_stories"]
     kpis = processed_data["kpis"]
 
-    # Seção de KPIs Gerais
     exibir_dashboard_geral(df_status, kpis)
-    
-    # Seção de Geração de Texto com IA
+
     if genai_instance and GENAI_AVAILABLE:
         st.header("🤖 Gerar Resumo para Teams com IA")
         if st.button("✨ Gerar Resumo"):
@@ -352,86 +322,67 @@ def exibir_dashboard(processed_data, genai_instance=None):
                 )
         st.markdown("---")
 
-    # Seção de Análise Detalhada por Plataforma e História
-    st.header("📋 Análise Detalhada por Plataforma e História")
+    st.header("📋 Análise Detalhada por História")
 
-    unique_platforms = df_platform_stories['platform'].unique()
+    unique_stories = df_platform_stories[['story_id', 'story_title']].drop_duplicates().sort_values(by='story_id')
     
-    if len(unique_platforms) == 0:
-        st.info("Nenhuma plataforma de teste foi identificada no arquivo.")
+    if len(unique_stories) == 0:
+        st.info("Nenhuma história de teste foi identificada no arquivo.")
         return
 
-    for platform in sorted(unique_platforms):
-        # Gerar uma chave única para o expander da plataforma
-        with st.expander(f"📱💻 {platform}", expanded=True):
-            platform_data = df_platform_stories[df_platform_stories['platform'] == platform]
+    for index, story in unique_stories.iterrows():
+        story_id = story['story_id']
+        story_title = story['story_title']
+        
+        story_key = f"story-{story_id}"
+        
+        story_data = df_platform_stories[df_platform_stories['story_id'] == story_id]
+        
+        story_status_counts = story_data.groupby('status').size().reset_index(name='Total')
+
+        story_kpis = {
+            "Total de Casos de Teste": story_status_counts['Total'].sum(),
+            "Casos Passados": story_status_counts[story_status_counts['status'] == 'Passou']['Total'].sum(),
+            "Casos Executados": story_status_counts[story_status_counts['status'] != 'Não Executado']['Total'].sum()
+        }
+        
+        story_kpis["Percentual de Execucao"] = (story_kpis["Casos Executados"] / story_kpis["Total de Casos de Teste"]) * 100 if story_kpis["Total de Casos de Teste"] > 0 else 0
+        story_kpis["Percentual de Sucesso"] = (story_kpis["Casos Passados"] / story_kpis["Casos Executados"]) * 100 if story_kpis["Casos Executados"] > 0 else 0
+        
+        with st.expander(f"📚 {story_id} - {story_title}", expanded=False):
+            st.markdown(f"**KPIs para a História:** `{story_title}`")
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("Total de Casos", story_kpis["Total de Casos de Teste"])
+            with col2:
+                st.metric("Taxa de Sucesso", f"{story_kpis['Percentual de Sucesso']:.1f}%")
+
+            col1, col2 = st.columns(2)
+            with col1:
+                fig_pie = px.pie(
+                    story_status_counts,
+                    values='Total',
+                    names='status',
+                    title="Distribuição de Status",
+                    color_discrete_map=custom_colors
+                )
+                fig_pie.update_traces(textposition='inside', textinfo='percent+label')
+                st.plotly_chart(fig_pie, use_container_width=True, key=f"pie-{story_id}")
             
-            unique_stories = platform_data[['story_id', 'story_title']].drop_duplicates().sort_values(by='story_id')
+            with col2:
+                fig_bar = px.bar(
+                    story_status_counts,
+                    x='status',
+                    y='Total',
+                    title="Casos por Status",
+                    color='status',
+                    color_discrete_map=custom_colors
+                )
+                fig_bar.update_layout(showlegend=False)
+                st.plotly_chart(fig_bar, use_container_width=True, key=f"bar-{story_id}")
             
-            if len(unique_stories) == 0:
-                st.info("Nenhuma história de teste foi identificada nesta plataforma.")
-                continue
-
-            for index, story in unique_stories.iterrows():
-                story_id = story['story_id']
-                story_title = story['story_title']
-                
-                # Gerar uma chave única para o expander da história
-                story_key = f"story-{platform}-{story_id}"
-                
-                # Filtra os dados para a história atual
-                story_data = platform_data[platform_data['story_id'] == story_id]
-                
-                # Agrupa os dados da história por status para os gráficos
-                story_status_counts = story_data.groupby('status').size().reset_index(name='Total')
-
-                # Calcula KPIs da história
-                story_kpis = {
-                    "Total de Casos de Teste": story_status_counts['Total'].sum(),
-                    "Casos Passados": story_status_counts[story_status_counts['status'] == 'Passou']['Total'].sum(),
-                    "Casos Executados": story_status_counts[story_status_counts['status'] != 'Não Executado']['Total'].sum()
-                }
-                
-                story_kpis["Percentual de Execucao"] = (story_kpis["Casos Executados"] / story_kpis["Total de Casos de Teste"]) * 100 if story_kpis["Total de Casos de Teste"] > 0 else 0
-                story_kpis["Percentual de Sucesso"] = (story_kpis["Casos Passados"] / story_kpis["Casos Executados"]) * 100 if story_kpis["Casos Executados"] > 0 else 0
-                
-                # Expander para cada história
-                with st.expander(f"📚 {story_id} - {story_title}", expanded=False):
-                    st.markdown(f"**KPIs para a História:** `{story_title}`")
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.metric("Total de Casos", story_kpis["Total de Casos de Teste"])
-                    with col2:
-                        st.metric("Taxa de Sucesso", f"{story_kpis['Percentual de Sucesso']:.1f}%")
-
-                    # Gráficos da história
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        fig_pie = px.pie(
-                            story_status_counts,
-                            values='Total',
-                            names='status',
-                            title="Distribuição de Status",
-                            color_discrete_map=custom_colors
-                        )
-                        fig_pie.update_traces(textposition='inside', textinfo='percent+label')
-                        st.plotly_chart(fig_pie, use_container_width=True, key=f"pie-{platform}-{story_id}")
-                    
-                    with col2:
-                        fig_bar = px.bar(
-                            story_status_counts,
-                            x='status',
-                            y='Total',
-                            title="Casos por Status",
-                            color='status',
-                            color_discrete_map=custom_colors
-                        )
-                        fig_bar.update_layout(showlegend=False)
-                        st.plotly_chart(fig_bar, use_container_width=True, key=f"bar-{platform}-{story_id}")
-                    
-                    st.subheader("Dados Detalhados")
-                    # Exibe a tabela detalhada com o nome do caso de teste
-                    st.dataframe(story_data[['test_case_id', 'test_case_name', 'status', 'comments']].rename(columns={'test_case_id': 'ID', 'test_case_name': 'Nome do Caso de Teste', 'status': 'Status', 'comments': 'Comentários'}), use_container_width=True)
+            st.subheader("Dados Detalhados")
+            st.dataframe(story_data[['test_case_id', 'test_case_name', 'status', 'comments']].rename(columns={'test_case_id': 'ID', 'test_case_name': 'Nome do Caso de Teste', 'status': 'Status', 'comments': 'Comentários'}), use_container_width=True)
     
     st.subheader("💾 Exportar Dados Completos")
     csv = df_stories.to_csv(index=False)
@@ -448,14 +399,12 @@ def exibir_dashboard_exemplo():
     st.info("Este é um exemplo de como o dashboard aparecerá com dados de um relatório com histórias de teste.")
 
     sample_data = pd.DataFrame({
-        'platform': ['App Android', 'App Android', 'App Android', 'Site Chrome', 'Site Chrome'],
         'story_id': ['ECPU-213', 'ECPU-213', 'ECPU-213', 'ECPU-94', 'ECPU-94'],
         'story_title': ['Incluir informações de parcelamento...', 'Incluir informações de parcelamento...', 'Incluir informações de parcelamento...', 'Validar exibição de parcelamento...', 'Validar exibição de parcelamento...'],
         'status': ['Passou', 'Falhado', 'Bloqueado', 'Passou', 'Falhado'],
         'test_case_id': ['ECPU-220', 'ECPU-221', 'ECPU-222', 'ECPU-94', 'ECPU-95'],
         'test_case_name': ['CT01: Verificar que o banner informativo está de acordo com o figma', 'CT02: Verificar que o banner informativo não aparece para usuários que não são cliente único', 'CT03: Verificar que o banner informativo não aparece para usuários que não sincronizaram os pedidos', 'Validar exibição de parcelamento no resumo do pedido com cupom', 'Validar exibição de parcelamento no resumo do pedido com cupom'],
         'comments': ['', 'bug fixado', 'falha de ambiente', '', 'bug aberto'],
-        'Total': [1, 1, 1, 1, 1]
     })
     
     # KPIs totais
@@ -478,7 +427,7 @@ def exibir_dashboard_exemplo():
     exibir_dashboard({
         "df_status": df_status,
         "kpis": kpis,
-        "df_stories": sample_data, # df_stories agora é o df_platform_stories
+        "df_stories": sample_data,
         "df_platform_stories": sample_data
     })
     
@@ -500,11 +449,8 @@ def main():
     if uploaded_file is not None:
         with st.spinner("Extraindo e processando dados do PDF..."):
             extracted_data = {}
-            # Como a extração de tabelas está fora de uso na nova lógica,
-            # focamos apenas na extração de texto
             extracted_data["text"] = extrair_texto_do_pdf(uploaded_file)
             
-            # Se o texto for extraído, processamos os dados
             if extracted_data["text"]:
                 processed_data = processar_dados_extraidos(extracted_data)
                 
