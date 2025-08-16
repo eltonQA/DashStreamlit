@@ -1,9 +1,3 @@
-"""
-QA Dashboard App - Aplicativo para análise de métricas de QA a partir de PDFs
-Versão otimizada para Streamlit Cloud
-"""
-# Código revertido para a versão que não inclui agrupamento por plataforma
-# a fim de evitar erros de extração e duplicidade de IDs.
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -77,20 +71,31 @@ def extrair_texto_do_pdf(pdf_file):
 
 def processar_dados_extraidos(extracted_data):
     """
-    Processa os dados extraídos e calcula métricas.
+    Processa os dados extraídos, agrupa por história e calcula métricas.
     A lógica agora é baseada na identificação de padrões de texto.
     """
     text_data = extracted_data["text"]
     lines = text_data.split('\n')
     
+    # Lista para armazenar os dados brutos de todos os casos de teste
     raw_test_data = []
     
+    # Variáveis para rastrear a plataforma, história e caso de teste atuais
+    current_platform = "Não Identificado"
     current_story_id = "Não Identificado"
     current_story_title = "Não Identificado"
     
+    # Regex para identificar a plataforma (ex: '1. Plataforma: APP Android')
+    regex_platform = re.compile(r'\d+\. Plataforma:\s*(.*)')
+    # Regex para identificar padrões de história (ex: ECPU-213: Incluir informações...)
     regex_story = re.compile(r'Suite de Testes\s*:\s*([A-Z]+-\d+)\s*(.*)')
+    # Regex para identificar o resultado da execução
+    regex_status_res = re.compile(r'Resultado da Execução:\s*(\w+)')
+    # Regex para identificar o estado da execução
+    regex_status_est = re.compile(r'Estado da\s*Execução:\s*(\w+)')
+    # Regex para identificar o nome completo do caso de teste e seu ID
     regex_test_case = re.compile(r'Caso de Teste\s*([A-Z]+-\d+):\s*(.*)')
-    regex_status_res = re.compile(r'(?:Resultado da Execução|Estado da Execução):\s*(\w+)', re.IGNORECASE)
+    # Regex para identificar comentários
     regex_comments = re.compile(r'Comentários\s*(.*?)?\s*(https:\/\/.*)?', re.DOTALL | re.IGNORECASE)
 
     temp_test_case_info = {}
@@ -98,56 +103,73 @@ def processar_dados_extraidos(extracted_data):
     for i, line in enumerate(lines):
         line = line.strip()
         
+        # Tenta encontrar a plataforma para atualizar o agrupamento
+        platform_match = regex_platform.search(line)
+        if platform_match:
+            current_platform = platform_match.group(1).strip()
+            continue
+
+        # Tenta encontrar a história para atualizar o agrupamento
         story_match = regex_story.search(line)
         if story_match:
             current_story_id = story_match.group(1).strip()
             current_story_title = story_match.group(2).strip()
             continue
-        
+            
+        # Tenta encontrar o status do teste. O status pode estar após
+        # 'Resultado da Execução:' ou 'Estado da Execução:'.
+        status_match = regex_status_res.search(line) or regex_status_est.search(line)
         test_case_match = regex_test_case.search(line)
+        
         if test_case_match:
             test_case_id = test_case_match.group(1).strip()
             test_case_name = test_case_match.group(2).strip()
-            temp_test_case_info = {
-                'story_id': current_story_id,
-                'story_title': current_story_title,
-                'test_case_id': test_case_id,
-                'test_case_name': test_case_name,
-                'status': 'Não Executado',
-                'comments': ''
-            }
-            continue
-
-        status_match_res = regex_status_res.search(line)
-        comments_match = regex_comments.search(line)
-        
-        if temp_test_case_info:
-            if status_match_res:
-                temp_test_case_info['status'] = status_match_res.group(1).strip()
-                raw_test_data.append(temp_test_case_info)
-                temp_test_case_info = {}
-                continue
-            if comments_match:
-                temp_test_case_info['comments'] = comments_match.group(1).strip()
+            
+            # Procurar pelo status e comentários nas linhas seguintes
+            status = "Não Executado"
+            comments = ""
+            for j in range(i, min(i + 10, len(lines))):
+                status_match_res = regex_status_res.search(lines[j])
+                status_match_est = regex_status_est.search(lines[j])
+                comments_match = regex_comments.search(lines[j])
                 
-    if temp_test_case_info:
-        raw_test_data.append(temp_test_case_info)
+                if status_match_res:
+                    status = status_match_res.group(1).strip()
+                if status_match_est:
+                    status = status_match_est.group(1).strip()
+                if comments_match:
+                    comments = comments_match.group(1).strip()
+
+            if current_story_id != "Não Identificado":
+                raw_test_data.append({
+                    'platform': current_platform,
+                    'story_id': current_story_id,
+                    'story_title': current_story_title,
+                    'test_case_id': test_case_id,
+                    'test_case_name': test_case_name,
+                    'status': status,
+                    'comments': comments
+                })
+            
+            continue
 
     if not raw_test_data:
         st.warning("Não foi possível identificar testes no arquivo. Verifique se o formato do PDF é o esperado.")
         return {
             "df_status": pd.DataFrame(),
             "kpis": {},
-            "df_stories": pd.DataFrame(),
-            "df_platform_stories": pd.DataFrame()
+            "df_stories": pd.DataFrame()
         }
 
     df_stories = pd.DataFrame(raw_test_data)
     
+    # Mapeia 'Falhou' para 'Falhado' para unificar
     df_stories['status'] = df_stories['status'].replace('Falhou', 'Falhado')
     
+    # Agrupa por história e status para criar a tabela de dados
     grouped_data = df_stories.groupby(['story_id', 'story_title', 'status']).size().reset_index(name='Total')
 
+    # Calcula KPIs totais
     total_cases = len(df_stories)
     passed_cases = len(df_stories[df_stories['status'].str.contains("Passou", case=False, na=False)])
     executed_cases = len(df_stories[~df_stories['status'].str.contains("Não Executado", case=False, na=False)])
@@ -199,7 +221,7 @@ Regras de formatação:
 - Use *emojis relevantes* 📊 para tornar a leitura mais visual.
 - Destaque **palavras-chave** importantes usando **duplo asterisco** para o **negrito** (padrão Markdown do Teams).
 - Use frases curtas e objetivas.
-- Enfatize as métricas totais e, em seguida, forneça um breve resumo por história de teste, agrupando por plataforma.
+- Enfatize as métricas totais e, em seguida, forneça um breve resumo por história de teste.
 
 ### Dados de entrada:
 - KPIs Totais:
@@ -208,7 +230,7 @@ Regras de formatação:
     - Percentual de Execucao: {kpis.get("Percentual de Execucao", 0):.1f}%
     - Percentual de Sucesso: {kpis.get("Percentual de Sucesso", 0):.1f}%
 
-- Resumo por Plataforma e História:
+- Resumo por História:
 """
         platforms_summary = df_platform_stories.groupby(['story_id', 'story_title', 'status']).size().unstack(fill_value=0)
         
