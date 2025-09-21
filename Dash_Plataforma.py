@@ -204,22 +204,21 @@ custom_colors = {
     'Não Executado': '#0000FF'
 }
 
-def display_kpis(kpis, title="KPIs", key_prefix=""):
+def display_kpis(kpis, title="KPIs"):
     """Exibe os KPIs principais em colunas."""
     st.subheader(title)
     cols = st.columns(len(kpis))
     for (label, value), col in zip(kpis.items(), cols):
-        # CORREÇÃO: Sanitiza o label para criar uma chave única e válida para o st.metric
-        sanitized_label = re.sub(r'\s+', '_', label).lower()
+        # CORREÇÃO: O argumento 'key' foi removido para resolver um TypeError.
         if isinstance(value, float):
-            col.metric(label, f"{value:.1f}%", key=f"{key_prefix}_{sanitized_label}")
+            col.metric(label, f"{value:.1f}%")
         else:
-            col.metric(label, value, key=f"{key_prefix}_{sanitized_label}")
+            col.metric(label, value)
 
 def display_overall_dashboard(df_status, kpis):
     """Exibe o dashboard geral com gráficos."""
     st.header("📈 Dashboard Geral de Testes")
-    display_kpis(kpis, title="", key_prefix="overall")
+    display_kpis(kpis, title="")
     
     col1, col2 = st.columns(2)
     with col1:
@@ -298,9 +297,7 @@ def display_dashboard(processed_data, genai_instance=None):
                 "Casos Passados": passed,
                 "Taxa de Sucesso": success_rate
             }
-            # CORREÇÃO: Sanitiza o nome da plataforma para garantir um prefixo de chave válido
-            sanitized_platform_key = re.sub(r'\s+', '_', platform).lower()
-            display_kpis(platform_kpis, title=f"KPIs para {platform}", key_prefix=sanitized_platform_key)
+            display_kpis(platform_kpis, title=f"KPIs para {platform}")
 
             col1, col2 = st.columns(2)
             platform_status_counts = platform_data.groupby('status').size().reset_index(name='Total')
