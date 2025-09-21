@@ -84,9 +84,7 @@ def process_extracted_data(extracted_data):
     current_platform = "Não Identificada"
     
     # Regex para identificar padrões
-    # ATUALIZADO: Regex mais flexível para a suíte de testes
     regex_story = re.compile(r'Suite de Testes\s*:\s*([\w-]+)')
-    # ATUALIZADO: Regex mais flexível para a plataforma (aceita números e novos nomes)
     regex_platform = re.compile(r'\d*\.?\s*Plataforma\s*:\s*(\w+)', re.IGNORECASE)
     regex_status_res = re.compile(r'Resultado da Execução:\s*(\w+)')
     regex_status_est = re.compile(r'Estado da\s*Execução:\s*(\w+)')
@@ -94,20 +92,16 @@ def process_extracted_data(extracted_data):
     for line in lines:
         line = line.strip()
         
-        # Tenta encontrar a plataforma para atualizar o contexto
         platform_match = regex_platform.search(line)
         if platform_match:
-            # Captura o grupo 1, que é o nome da plataforma
             current_platform = platform_match.group(1).strip()
             continue
 
-        # Tenta encontrar a história para atualizar o contexto
         story_match = regex_story.search(line)
         if story_match:
             current_story_id = story_match.group(1).strip()
             continue
 
-        # Tenta encontrar o status do teste
         status_match = regex_status_res.search(line) or regex_status_est.search(line)
         if status_match:
             status = status_match.group(1).strip()
@@ -128,13 +122,8 @@ def process_extracted_data(extracted_data):
 
     df_tests = pd.DataFrame(raw_test_data)
     
-    # Mapeia 'Falhou' para 'Falhado' para unificar
     df_tests['status'] = df_tests['status'].replace('Falhou', 'Falhado')
     
-    # Agrupa por história, plataforma e status para criar a tabela de dados
-    grouped_data = df_tests.groupby(['platform', 'story_id', 'status']).size().reset_index(name='Total')
-
-    # Calcula KPIs totais
     total_cases = len(df_tests)
     passed_cases = len(df_tests[df_tests['status'].str.contains("Passou", case=False, na=False)])
     executed_cases = len(df_tests[~df_tests['status'].str.contains("Não Executado", case=False, na=False)])
@@ -153,7 +142,7 @@ def process_extracted_data(extracted_data):
     return {
         "df_status": df_tests.groupby('status').size().reset_index(name='Total').rename(columns={'status': 'Status'}),
         "kpis": kpis,
-        "df_tests": df_tests # Retorna o dataframe completo com a coluna de plataforma
+        "df_tests": df_tests
     }
 
 # --- Funções para gerar texto com IA ---
@@ -163,8 +152,6 @@ def get_inspirational_quote():
         ("O fracasso é uma opção. Se as coisas não estão a falhar, você não está a inovar o suficiente.", "Elon Musk"),
         ("A inovação distingue um líder de um seguidor.", "Steve Jobs"),
         ("Se você constrói grandes experiências, os clientes contam uns aos outros sobre isso.", "Bill Gates"),
-        ("O primeiro passo é estabelecer que algo é possível; a probabilidade ocorrerá em seguida.", "Elon Musk"),
-        ("A paciência é um elemento-chave do sucesso.", "Bill Gates"),
     ]
     quote, author = random.choice(quotes)
     return f"*{quote}* - {author}"
@@ -194,7 +181,6 @@ Regras:
 
 ### 📱 Detalhamento por Plataforma:
 """
-        # Agrupar por plataforma e depois por história
         for platform, platform_df in df_tests.groupby('platform'):
             prompt += f"\n- **Plataforma: {platform}**\n"
             stories_summary = platform_df.groupby(['story_id', 'status']).size().unstack(fill_value=0)
@@ -204,10 +190,7 @@ Regras:
                 status_list = ", ".join([f"{status}: {count}" for status, count in row.items() if count > 0])
                 prompt += f"  - **{story_id}**: {total_story_tests} casos ({status_list})\n"
         
-        # Chamada para a API
         response = model.generate_content(prompt)
-        
-        # Adiciona a frase inspiradora no final
         inspirational_quote = get_inspirational_quote()
         return f"{response.text}\n\n{inspirational_quote}"
     except Exception as e:
@@ -225,18 +208,18 @@ def display_kpis(kpis, title="KPIs", key_prefix=""):
     """Exibe os KPIs principais em colunas."""
     st.subheader(title)
     cols = st.columns(len(kpis))
-    # Adicionado key_prefix para garantir unicidade das chaves
     for (label, value), col in zip(kpis.items(), cols):
+        # CORREÇÃO: Sanitiza o label para criar uma chave única e válida para o st.metric
+        sanitized_label = re.sub(r'\s+', '_', label).lower()
         if isinstance(value, float):
-            col.metric(label, f"{value:.1f}%", key=f"{key_prefix}_{label}")
+            col.metric(label, f"{value:.1f}%", key=f"{key_prefix}_{sanitized_label}")
         else:
-            col.metric(label, value, key=f"{key_prefix}_{label}")
-
+            col.metric(label, value, key=f"{key_prefix}_{sanitized_label}")
 
 def display_overall_dashboard(df_status, kpis):
     """Exibe o dashboard geral com gráficos."""
     st.header("📈 Dashboard Geral de Testes")
-    display_kpis(kpis, title="", key_prefix="overall") # Título já está no header
+    display_kpis(kpis, title="", key_prefix="overall")
     
     col1, col2 = st.columns(2)
     with col1:
@@ -293,7 +276,6 @@ def display_dashboard(processed_data, genai_instance=None):
                 )
         st.markdown("---")
 
-    # --- NOVA SEÇÃO: Análise por Plataforma ---
     st.header("📱 Análise Detalhada por Plataforma")
 
     unique_platforms = df_tests['platform'].unique()
@@ -306,7 +288,6 @@ def display_dashboard(processed_data, genai_instance=None):
         with st.expander(f"**{platform}**"):
             platform_data = df_tests[df_tests['platform'] == platform]
             
-            # KPIs da plataforma
             total = len(platform_data)
             passed = len(platform_data[platform_data['status'] == 'Passou'])
             executed = len(platform_data[platform_data['status'] != 'Não Executado'])
@@ -319,27 +300,22 @@ def display_dashboard(processed_data, genai_instance=None):
             }
             display_kpis(platform_kpis, title=f"KPIs para {platform}", key_prefix=platform)
 
-            # Gráficos da plataforma
             col1, col2 = st.columns(2)
             platform_status_counts = platform_data.groupby('status').size().reset_index(name='Total')
             with col1:
                 fig_pie = px.pie(platform_status_counts, values='Total', names='status', title="Distribuição de Status", color='status', color_discrete_map=custom_colors)
                 fig_pie.update_traces(textposition='inside', textinfo='percent+label')
-                # Adicionada chave única para o gráfico de pizza
                 st.plotly_chart(fig_pie, use_container_width=True, key=f"pie_chart_{platform}")
             
             with col2:
                 fig_bar = px.bar(platform_status_counts, x='status', y='Total', title="Casos por Status", color='status', color_discrete_map=custom_colors)
                 fig_bar.update_layout(showlegend=False)
-                # Adicionada chave única para o gráfico de barras
                 st.plotly_chart(fig_bar, use_container_width=True, key=f"bar_chart_{platform}")
             
-            # Detalhes por história dentro da plataforma
             st.subheader("Detalhes por História")
             for story_id, story_data in platform_data.groupby('story_id'):
                 story_status_summary = story_data['status'].value_counts().reset_index()
                 story_status_summary.columns = ['Status', 'Total']
-                # Adicionada chave única para o markdown e dataframe
                 st.markdown(f"**História:** `{story_id}`", key=f"md_{platform}_{story_id}")
                 st.dataframe(story_status_summary, use_container_width=True, key=f"df_{platform}_{story_id}")
     
