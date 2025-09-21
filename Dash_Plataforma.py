@@ -298,7 +298,9 @@ def display_dashboard(processed_data, genai_instance=None):
                 "Casos Passados": passed,
                 "Taxa de Sucesso": success_rate
             }
-            display_kpis(platform_kpis, title=f"KPIs para {platform}", key_prefix=platform)
+            # CORREÇÃO: Sanitiza o nome da plataforma para garantir um prefixo de chave válido
+            sanitized_platform_key = re.sub(r'\s+', '_', platform).lower()
+            display_kpis(platform_kpis, title=f"KPIs para {platform}", key_prefix=sanitized_platform_key)
 
             col1, col2 = st.columns(2)
             platform_status_counts = platform_data.groupby('status').size().reset_index(name='Total')
