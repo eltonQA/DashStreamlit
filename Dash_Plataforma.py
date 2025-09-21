@@ -221,20 +221,22 @@ custom_colors = {
     'Não Executado': '#0000FF'
 }
 
-def display_kpis(kpis, title="KPIs"):
+def display_kpis(kpis, title="KPIs", key_prefix=""):
     """Exibe os KPIs principais em colunas."""
     st.subheader(title)
     cols = st.columns(len(kpis))
+    # Adicionado key_prefix para garantir unicidade das chaves
     for (label, value), col in zip(kpis.items(), cols):
         if isinstance(value, float):
-            col.metric(label, f"{value:.1f}%")
+            col.metric(label, f"{value:.1f}%", key=f"{key_prefix}_{label}")
         else:
-            col.metric(label, value)
+            col.metric(label, value, key=f"{key_prefix}_{label}")
+
 
 def display_overall_dashboard(df_status, kpis):
     """Exibe o dashboard geral com gráficos."""
     st.header("📈 Dashboard Geral de Testes")
-    display_kpis(kpis, title="") # Título já está no header
+    display_kpis(kpis, title="", key_prefix="overall") # Título já está no header
     
     col1, col2 = st.columns(2)
     with col1:
@@ -315,7 +317,7 @@ def display_dashboard(processed_data, genai_instance=None):
                 "Casos Passados": passed,
                 "Taxa de Sucesso": success_rate
             }
-            display_kpis(platform_kpis, title=f"KPIs para {platform}")
+            display_kpis(platform_kpis, title=f"KPIs para {platform}", key_prefix=platform)
 
             # Gráficos da plataforma
             col1, col2 = st.columns(2)
@@ -323,20 +325,23 @@ def display_dashboard(processed_data, genai_instance=None):
             with col1:
                 fig_pie = px.pie(platform_status_counts, values='Total', names='status', title="Distribuição de Status", color='status', color_discrete_map=custom_colors)
                 fig_pie.update_traces(textposition='inside', textinfo='percent+label')
-                st.plotly_chart(fig_pie, use_container_width=True)
+                # Adicionada chave única para o gráfico de pizza
+                st.plotly_chart(fig_pie, use_container_width=True, key=f"pie_chart_{platform}")
             
             with col2:
                 fig_bar = px.bar(platform_status_counts, x='status', y='Total', title="Casos por Status", color='status', color_discrete_map=custom_colors)
                 fig_bar.update_layout(showlegend=False)
-                st.plotly_chart(fig_bar, use_container_width=True)
+                # Adicionada chave única para o gráfico de barras
+                st.plotly_chart(fig_bar, use_container_width=True, key=f"bar_chart_{platform}")
             
             # Detalhes por história dentro da plataforma
             st.subheader("Detalhes por História")
             for story_id, story_data in platform_data.groupby('story_id'):
                 story_status_summary = story_data['status'].value_counts().reset_index()
                 story_status_summary.columns = ['Status', 'Total']
-                st.markdown(f"**História:** `{story_id}`")
-                st.dataframe(story_status_summary, use_container_width=True)
+                # Adicionada chave única para o markdown e dataframe
+                st.markdown(f"**História:** `{story_id}`", key=f"md_{platform}_{story_id}")
+                st.dataframe(story_status_summary, use_container_width=True, key=f"df_{platform}_{story_id}")
     
     st.markdown("---")
     st.subheader("💾 Exportar Dados Completos")
@@ -408,4 +413,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
