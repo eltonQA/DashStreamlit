@@ -167,7 +167,7 @@ def generate_ai_text(df_stories, kpis, genai_instance):
         return "Erro: IA não configurada ou indisponível."
     
     try:
-        model = genai_instance.GenerativeModel('gemini-1.5-flash')
+        model = genai_instance.GenerativeModel('gemini-1.0-pro')
         
         prompt = f"""
 Com base nos seguintes dados de um dashboard de métricas de QA (Quality Assurance),
