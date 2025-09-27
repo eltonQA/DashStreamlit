@@ -1,0 +1,44 @@
+# Ambientes Virtuais
+.venv/
+venv/
+env/
+ENV/
+*.env
+
+# Arquivos de cache e compilados do Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Arquivos de configuração de IDEs e editores
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+.DS_Store
+
+# Arquivos de configuração e segredos locais do Streamlit
+.streamlit/
+
+# Pacotes e distribuição
+build/
+dist/
+*.egg
+wheels/
+
+# Logs e arquivos de banco de dados temporários
+*.log
+*.sqlite3
+*.db
+
+# Notebooks e checkpoints
+.ipynb_checkpoints
+
+# Arquivos de credenciais (adicione outros se necessário)
+credentials.json
+secrets.toml
