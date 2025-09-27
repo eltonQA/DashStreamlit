@@ -134,7 +134,7 @@ if uploaded_file is not None:
             st.bar_chart(suite_status, color=color_sequence)
 
         with col_detail:
-            st.subheader("Resumo Numérico")
+            st.subheader("Detalhes por Suíte")
             suite_summary = df.groupby('Issue (Suíte)').agg(
                 total_casos=('Nome do Teste', 'count'),
                 passaram=('Status', lambda s: (s == 'Passou').sum()),
