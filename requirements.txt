@@ -8,6 +8,8 @@ pdfplumber>=0.11.0
 # Dashboard and visualization
 streamlit>=1.2.0
 plotly>=5.15.0
+beautifulsoup4
+lxml
 
 # Google AI (opcional - funciona sem chave)
 google-generativeai
