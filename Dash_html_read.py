@@ -124,7 +124,8 @@ if uploaded_file is not None:
         with col_suite_chart:
             st.header("Resultados por Suíte (Gráfico de Barras)")
             suite_status = df.groupby(['Issue (Suíte)', 'Status']).size().unstack(fill_value=0)
-            st.bar_chart(suite_status, color=["#FF4B4B", "#24A221"]) # Exemplo de cores
+            # CORREÇÃO: Removemos o parâmetro 'color' para deixar o Streamlit gerenciar as cores.
+            st.bar_chart(suite_status)
 
         with col_pie_chart:
             st.header("Distribuição Geral de Status (%)")
