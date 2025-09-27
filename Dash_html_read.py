@@ -116,7 +116,7 @@ if uploaded_file is not None:
                         {'range': [0, 70], 'color': "#FF4B4B"},
                         {'range': [70, 90], 'color': "yellow"},
                         {'range': [90, 100], 'color': "#28a745"}],
-                    'bar': {'color': "rgba(0,0,0,0)"}, # Deixa a barra principal transparente
+                    'bar': {'color': "rgba(4,0,0,0)"}, # Deixa a barra principal transparente
                     'threshold': {
                         'line': {'color': "black", 'width': 4},
                         'thickness': 0.85,
