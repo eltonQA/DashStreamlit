@@ -87,7 +87,7 @@ if uploaded_file is not None:
             'Não Executado': '#007bff'  # Azul
         }
 
-        # --- Métricas Principais ---
+        # --- Métricas Principais e Velocímetro ---
         st.header("Visão Geral da Execução")
         
         total_tests = len(df)
@@ -97,23 +97,6 @@ if uploaded_file is not None:
         
         pass_rate = (passed_tests / total_tests * 100) if total_tests > 0 else 0
 
-        # --- Gráfico de Velocímetro (Gauge) com cores padronizadas ---
-        gauge_chart = go.Figure(go.Indicator(
-            mode = "gauge+number",
-            value = pass_rate,
-            title = {'text': "Taxa de Sucesso (%)"},
-            gauge = {
-                'axis': {'range': [0, 100]},
-                'steps' : [
-                    {'range': [0, 70], 'color': STATUS_COLORS['Falhou']},
-                    {'range': [70, 90], 'color': STATUS_COLORS['Bloqueado']},
-                    {'range': [90, 100], 'color': STATUS_COLORS['Passou']}],
-                'bar': {'color': "#384269"}
-            }
-        ))
-        gauge_chart.update_layout(height=350)
-
-        # --- Layout das Métricas e Velocímetro ---
         col1, col2 = st.columns([1, 2])
         with col1:
             st.metric("Total de Testes", f"{total_tests}")
@@ -122,47 +105,56 @@ if uploaded_file is not None:
             st.metric("🤚 Bloqueados", f"{blocked_tests}")
         
         with col2:
+            gauge_chart = go.Figure(go.Indicator(
+                mode = "gauge+number",
+                value = pass_rate,
+                title = {'text': "Taxa de Sucesso (%)"},
+                gauge = {
+                    'axis': {'range': [0, 100]},
+                    'steps' : [
+                        {'range': [0, 70], 'color': STATUS_COLORS['Falhou']},
+                        {'range': [70, 90], 'color': STATUS_COLORS['Bloqueado']},
+                        {'range': [90, 100], 'color': STATUS_COLORS['Passou']}],
+                    'bar': {'color': "#384269"}
+                }
+            ))
+            gauge_chart.update_layout(height=350)
             st.plotly_chart(gauge_chart, use_container_width=True)
 
         st.markdown("---")
         
-        # --- Análise por Suíte com Gráfico de Pizza ---
+        # --- Análise por Suíte ---
         st.header("Análise de Status por Suíte")
-        col_bar_chart, col_pie_chart = st.columns(2)
-        
-        with col_bar_chart:
+        col_bar, col_detail = st.columns(2)
+
+        with col_bar:
             st.subheader("Resultados Agrupados")
             suite_status = df.groupby(['Issue (Suíte)', 'Status']).size().unstack(fill_value=0)
-            
-            # Cria a lista de cores na ordem correta das colunas do dataframe
             color_sequence = [STATUS_COLORS.get(col, '#CCCCCC') for col in suite_status.columns]
             st.bar_chart(suite_status, color=color_sequence)
 
-        with col_pie_chart:
-            st.subheader("Distribuição Geral (%)")
-            status_counts = df['Status'].value_counts().reset_index()
-            status_counts.columns = ['Status', 'count']
-            
-            pie_chart = px.pie(
-                status_counts,
-                values='count', 
-                names='Status',
-                color='Status',
-                color_discrete_map=STATUS_COLORS
-            )
-            pie_chart.update_traces(textinfo='percent+label', textfont_size=14)
-            st.plotly_chart(pie_chart, use_container_width=True)
+        with col_detail:
+            st.subheader("Resumo Numérico")
+            suite_summary = df.groupby('Issue (Suíte)').agg(
+                total_casos=('Nome do Teste', 'count'),
+                passaram=('Status', lambda s: (s == 'Passou').sum()),
+                falharam=('Status', lambda s: (s == 'Falhou').sum())
+            ).reset_index()
+            st.dataframe(suite_summary, use_container_width=True, hide_index=True)
 
-        st.markdown("---")
-
-        # --- TABELA DE DETALHES POR SUÍTE ---
-        st.header("Resumo por Suíte")
-        suite_summary = df.groupby('Issue (Suíte)').agg(
-            Total_casos=('Nome do Teste', 'count'),
-            Passaram=('Status', lambda s: (s == 'Passou').sum()),
-            Falharam=('Status', lambda s: (s == 'Falhou').sum())
-        ).reset_index()
-        st.dataframe(suite_summary, use_container_width=True, hide_index=True)
+        # --- Gráfico de Pizza ---
+        st.subheader("Distribuição Geral de Status (%)")
+        status_counts = df['Status'].value_counts().reset_index()
+        status_counts.columns = ['Status', 'count']
+        pie_chart = px.pie(
+            status_counts,
+            values='count', 
+            names='Status',
+            color='Status',
+            color_discrete_map=STATUS_COLORS
+        )
+        pie_chart.update_traces(textinfo='percent+label', textfont_size=14)
+        st.plotly_chart(pie_chart, use_container_width=True)
 
         st.markdown("---")
         st.header("Detalhes de Todos os Casos de Teste")
