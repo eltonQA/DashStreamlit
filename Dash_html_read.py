@@ -118,17 +118,17 @@ if uploaded_file is not None:
 
         st.markdown("---")
         
-        # --- Análise por Suíte com Gráfico de Pizza ---
-        col_suite_chart, col_pie_chart = st.columns(2)
+        # --- Análise por Suíte (Gráficos) ---
+        st.header("Análise de Status por Suíte")
+        col_bar_chart, col_pie_chart = st.columns(2)
         
-        with col_suite_chart:
-            st.header("Resultados por Suíte (Gráfico de Barras)")
+        with col_bar_chart:
+            st.subheader("Resultados Agrupados")
             suite_status = df.groupby(['Issue (Suíte)', 'Status']).size().unstack(fill_value=0)
-            # CORREÇÃO: Removemos o parâmetro 'color' para deixar o Streamlit gerenciar as cores.
             st.bar_chart(suite_status)
 
         with col_pie_chart:
-            st.header("Distribuição Geral de Status (%)")
+            st.subheader("Distribuição Geral (%)")
             status_counts = df['Status'].value_counts()
             
             pie_chart = px.pie(
@@ -138,6 +138,17 @@ if uploaded_file is not None:
             )
             pie_chart.update_traces(textinfo='percent+label')
             st.plotly_chart(pie_chart, use_container_width=True)
+
+        st.markdown("---")
+
+        # --- TABELA DE DETALHES POR SUÍTE (RESTAURADA) ---
+        st.header("Resumo por Suíte")
+        suite_summary = df.groupby('Issue (Suíte)').agg(
+            total_casos=('Nome do Teste', 'count'),
+            passaram=('Status', lambda s: (s == 'Passou').sum()),
+            falharam=('Status', lambda s: (s == 'Falhou').sum())
+        ).reset_index()
+        st.dataframe(suite_summary, use_container_width=True, hide_index=True)
 
         st.markdown("---")
         st.header("Detalhes de Todos os Casos de Teste")
