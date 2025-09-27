@@ -79,6 +79,14 @@ if uploaded_file is not None:
         df = pd.DataFrame(data)
         st.markdown("---")
 
+        # --- Paleta de Cores Padronizada ---
+        STATUS_COLORS = {
+            'Passou': '#28a745',        # Verde
+            'Falhou': '#FF2800',        # Vermelho Ferrari
+            'Bloqueado': '#FFDB58',     # Amarelo Mostarda
+            'Não Executado': '#007bff'  # Azul
+        }
+
         # --- Métricas Principais ---
         st.header("Visão Geral da Execução")
         
@@ -89,7 +97,7 @@ if uploaded_file is not None:
         
         pass_rate = (passed_tests / total_tests * 100) if total_tests > 0 else 0
 
-        # --- Gráfico de Velocímetro (Gauge) ---
+        # --- Gráfico de Velocímetro (Gauge) com cores padronizadas ---
         gauge_chart = go.Figure(go.Indicator(
             mode = "gauge+number",
             value = pass_rate,
@@ -97,9 +105,9 @@ if uploaded_file is not None:
             gauge = {
                 'axis': {'range': [0, 100]},
                 'steps' : [
-                    {'range': [0, 50], 'color': "#FF4B4B"},
-                    {'range': [50, 80], 'color': "yellow"},
-                    {'range': [80, 100], 'color': "#24A221"}],
+                    {'range': [0, 70], 'color': STATUS_COLORS['Falhou']},
+                    {'range': [70, 90], 'color': STATUS_COLORS['Bloqueado']},
+                    {'range': [90, 100], 'color': STATUS_COLORS['Passou']}],
                 'bar': {'color': "#384269"}
             }
         ))
@@ -118,30 +126,36 @@ if uploaded_file is not None:
 
         st.markdown("---")
         
-        # --- Análise por Suíte (Gráficos) ---
+        # --- Análise por Suíte com Gráfico de Pizza ---
         st.header("Análise de Status por Suíte")
         col_bar_chart, col_pie_chart = st.columns(2)
         
         with col_bar_chart:
             st.subheader("Resultados Agrupados")
             suite_status = df.groupby(['Issue (Suíte)', 'Status']).size().unstack(fill_value=0)
-            st.bar_chart(suite_status)
+            
+            # Cria a lista de cores na ordem correta das colunas do dataframe
+            color_sequence = [STATUS_COLORS.get(col, '#CCCCCC') for col in suite_status.columns]
+            st.bar_chart(suite_status, color=color_sequence)
 
         with col_pie_chart:
             st.subheader("Distribuição Geral (%)")
-            status_counts = df['Status'].value_counts()
+            status_counts = df['Status'].value_counts().reset_index()
+            status_counts.columns = ['Status', 'count']
             
             pie_chart = px.pie(
-                values=status_counts.values, 
-                names=status_counts.index,
-                color_discrete_sequence=px.colors.sequential.RdBu
+                status_counts,
+                values='count', 
+                names='Status',
+                color='Status',
+                color_discrete_map=STATUS_COLORS
             )
-            pie_chart.update_traces(textinfo='percent+label')
+            pie_chart.update_traces(textinfo='percent+label', textfont_size=14)
             st.plotly_chart(pie_chart, use_container_width=True)
 
         st.markdown("---")
 
-        # --- TABELA DE DETALHES POR SUÍTE (RESTAURADA) ---
+        # --- TABELA DE DETALHES POR SUÍTE ---
         st.header("Resumo por Suíte")
         suite_summary = df.groupby('Issue (Suíte)').agg(
             total_casos=('Nome do Teste', 'count'),
