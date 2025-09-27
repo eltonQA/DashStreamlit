@@ -158,9 +158,9 @@ if uploaded_file is not None:
         # --- TABELA DE DETALHES POR SUÍTE ---
         st.header("Resumo por Suíte")
         suite_summary = df.groupby('Issue (Suíte)').agg(
-            total_casos=('Nome do Teste', 'count'),
-            passaram=('Status', lambda s: (s == 'Passou').sum()),
-            falharam=('Status', lambda s: (s == 'Falhou').sum())
+            Total_casos=('Nome do Teste', 'count'),
+            Passaram=('Status', lambda s: (s == 'Passou').sum()),
+            Falharam=('Status', lambda s: (s == 'Falhou').sum())
         ).reset_index()
         st.dataframe(suite_summary, use_container_width=True, hide_index=True)
 
