@@ -105,6 +105,7 @@ if uploaded_file is not None:
             st.metric("🤚 Bloqueados", f"{blocked_tests}")
         
         with col2:
+            # --- Gráfico de Velocímetro (Gauge) com ponteiro ---
             gauge_chart = go.Figure(go.Indicator(
                 mode = "gauge+number",
                 value = pass_rate,
@@ -112,14 +113,19 @@ if uploaded_file is not None:
                 gauge = {
                     'axis': {'range': [0, 100]},
                     'steps' : [
-                        {'range': [0, 70], 'color': STATUS_COLORS['Falhou']},
-                        {'range': [70, 90], 'color': STATUS_COLORS['Bloqueado']},
-                        {'range': [90, 100], 'color': STATUS_COLORS['Passou']}],
-                    'bar': {'color': "#384269"}
+                        {'range': [0, 70], 'color': "#FF4B4B"},
+                        {'range': [70, 90], 'color': "yellow"},
+                        {'range': [90, 100], 'color': "#28a745"}],
+                    'bar': {'color': "rgba(0,0,0,0)"}, # Deixa a barra principal transparente
+                    'threshold': {
+                        'line': {'color': "black", 'width': 4},
+                        'thickness': 0.85,
+                        'value': pass_rate} # O ponteiro é a linha 'threshold'
                 }
             ))
             gauge_chart.update_layout(height=350)
             st.plotly_chart(gauge_chart, use_container_width=True)
+
 
         st.markdown("---")
         
@@ -134,7 +140,7 @@ if uploaded_file is not None:
             st.bar_chart(suite_status, color=color_sequence)
 
         with col_detail:
-            st.subheader("Detalhes por Suíte")
+            st.subheader("Detalhes por Issue")
             suite_summary = df.groupby('Issue (Suíte)').agg(
                 total_casos=('Nome do Teste', 'count'),
                 passaram=('Status', lambda s: (s == 'Passou').sum()),
