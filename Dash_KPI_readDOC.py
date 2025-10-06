@@ -193,7 +193,7 @@ def run_dashboard(test_data, bug_impact_data):
         st.subheader("Status Geral de Execução")
         total_not_executed = sum(d.get('Não Executado', 0) for d in test_data.values())
         
-        fig_geral = go.Figure(data=[go.Doughnut(
+        fig_geral = go.Figure(data=[go.Pie(
             labels=['Passou', 'Falhou', 'Bloqueado', 'Não Executado'],
             values=[total_passou, total_falhou, total_bloqueado, total_not_executed],
             hole=.4,
@@ -210,7 +210,7 @@ def run_dashboard(test_data, bug_impact_data):
         
         fig_plataforma = go.Figure()
         for status in statuses:
-            values = [test_data[p.lower().replace(" ", "")].get(status, 0) for p in platforms]
+            values = [test_data.get(p.lower().replace(" ", ""), {}).get(status, 0) for p in ['web', 'android', 'ios']]
             fig_plataforma.add_trace(go.Bar(name=status, x=platforms, y=values, marker_color=CHART_COLORS.get(status, '#CCCCCC')))
         
         fig_plataforma.update_layout(barmode='stack', legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), xaxis=dict(tickfont=dict(color='white')), yaxis=dict(tickfont=dict(color='white')), paper_bgcolor='#1F2937', plot_bgcolor='#1F2937', font_color='white', margin=dict(t=20, b=20, l=20, r=20))
