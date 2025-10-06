@@ -16,6 +16,6 @@ google-generativeai
 
 # Pillow para processamento de imagem básico
 Pillow>=7.1.0
+
 # processamento doc
 python-docx
-python-docx.
