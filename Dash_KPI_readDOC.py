@@ -73,16 +73,8 @@ def extract_data_from_doc(doc_file):
 
         current_platform = None
 
-        # A reliable way to associate tables with platforms is to find the last platform header
-        # before a table is processed.
-        all_elements = []
-        for p in document.paragraphs:
-            all_elements.append(p)
-        
-        # This logic is very specific to the document structure
-        # It assumes tables follow platform headers
+        # A lógica assume que as tabelas seguem os cabeçalhos da plataforma
         doc_tables = iter(document.tables)
-        current_platform = None
         for para in document.paragraphs:
             text = para.text.lower()
             if 'plataforma: mobile android' in text:
@@ -92,8 +84,7 @@ def extract_data_from_doc(doc_file):
             elif 'plataforma: web' in text:
                 current_platform = 'web'
             
-            # This is a heuristic to check if a paragraph is followed by a table
-            # It's fragile. A better doc structure would be ideal.
+            # Heurística para verificar se um parágrafo é seguido por uma tabela de caso de teste
             if 'caso de teste' in text and current_platform:
                 try:
                     table = next(doc_tables)
@@ -116,13 +107,13 @@ def extract_data_from_doc(doc_file):
                 except (StopIteration, IndexError):
                     continue
 
-        # Post-processing for unexecuted tests based on the doc structure
+        # Pós-processamento para testes não executados com base na estrutura do documento
         total_tcs_per_platform = 20
         test_data['android']['Não Executado'] = total_tcs_per_platform - sum(test_data['android'].values())
         test_data['ios']['Não Executado'] = total_tcs_per_platform - sum(test_data['ios'].values())
         test_data['web']['Não Executado'] = total_tcs_per_platform - sum(test_data['web'].values())
         
-        # Convert defaultdicts to regular dicts for cleaner output
+        # Converte defaultdicts para dicts normais
         final_test_data = {k: dict(v) for k, v in test_data.items()}
         final_bug_data = dict(bug_impact_data)
         
@@ -168,8 +159,8 @@ def run_dashboard(test_data, bug_impact_data):
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # Seção de Gráficos
-    chart_cols = st.columns([2, 3])
+    # Seção de Gráficos em 3 colunas
+    chart_cols = st.columns(3)
 
     with chart_cols[0]:
         st.subheader("Status Geral de Execução")
@@ -186,7 +177,7 @@ def run_dashboard(test_data, bug_impact_data):
         st.plotly_chart(fig_geral, use_container_width=True)
 
     with chart_cols[1]:
-        st.subheader("Distribuição de Status por Plataforma")
+        st.subheader("Status por Plataforma")
         platforms = ['WEB', 'Mobile Android', 'MOBILE iOS']
         statuses = ['Passou', 'Falhou', 'Bloqueado', 'Não Executado']
         
@@ -198,20 +189,18 @@ def run_dashboard(test_data, bug_impact_data):
         fig_plataforma.update_layout(barmode='stack', legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), xaxis=dict(tickfont=dict(color='white')), yaxis=dict(tickfont=dict(color='white')), paper_bgcolor='#1F2937', plot_bgcolor='#1F2937', font_color='white', margin=dict(t=20, b=20, l=20, r=20))
         st.plotly_chart(fig_plataforma, use_container_width=True)
 
-    st.markdown("<br>", unsafe_allow_html=True)
+    with chart_cols[2]:
+        if bug_impact_data:
+            st.subheader("Impacto de Bugs")
+            bug_labels = list(bug_impact_data.keys())
+            bug_values = list(bug_impact_data.values())
 
-    # Gráfico de Impacto de Bugs
-    if bug_impact_data:
-        st.subheader("Impacto de Bugs nos Casos de Teste")
-        bug_labels = list(bug_impact_data.keys())
-        bug_values = list(bug_impact_data.values())
-
-        fig_bugs = go.Figure(go.Bar(
-            x=bug_values, y=bug_labels, orientation='h',
-            marker=dict(color='rgba(239, 68, 68, 0.7)', line=dict(color='rgb(239, 68, 68)', width=1))
-        ))
-        fig_bugs.update_layout(xaxis_title="Casos de Teste Impactados", yaxis=dict(autorange="reversed"), paper_bgcolor='#1F2937', plot_bgcolor='#1F2937', font_color='white', margin=dict(t=20, b=20, l=20, r=20))
-        st.plotly_chart(fig_bugs, use_container_width=True)
+            fig_bugs = go.Figure(go.Bar(
+                x=bug_values, y=bug_labels, orientation='h',
+                marker=dict(color='rgba(239, 68, 68, 0.7)', line=dict(color='rgb(239, 68, 68)', width=1))
+            ))
+            fig_bugs.update_layout(xaxis_title="Casos de Teste Impactados", yaxis=dict(autorange="reversed"), paper_bgcolor='#1F2937', plot_bgcolor='#1F2937', font_color='white', margin=dict(t=20, b=20, l=20, r=20))
+            st.plotly_chart(fig_bugs, use_container_width=True)
 
 
 # --- Aplicação Principal ---
@@ -251,4 +240,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
