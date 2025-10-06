@@ -73,6 +73,16 @@ def extract_data_from_doc(doc_file):
 
         current_platform = None
 
+        # A reliable way to associate tables with platforms is to find the last platform header
+        # before a table is processed.
+        all_elements = []
+        for p in document.paragraphs:
+            all_elements.append(p)
+        
+        # This logic is very specific to the document structure
+        # It assumes tables follow platform headers
+        doc_tables = iter(document.tables)
+        current_platform = None
         for para in document.paragraphs:
             text = para.text.lower()
             if 'plataforma: mobile android' in text:
@@ -81,63 +91,36 @@ def extract_data_from_doc(doc_file):
                 current_platform = 'ios'
             elif 'plataforma: web' in text:
                 current_platform = 'web'
-        
-        # Reset file pointer to read tables from the beginning
-        doc_file.seek(0)
-        document = docx.Document(doc_file)
-
-        current_platform = None # Reset for table parsing
-        
-        # This parsing logic is specific to the TestLink .doc format provided
-        for table in document.tables:
-            # Heuristic to identify a test case execution table
-            if 'Resultado da Execução' in table.rows[0].cells[0].text or len(table.rows) > 5:
+            
+            # This is a heuristic to check if a paragraph is followed by a table
+            # It's fragile. A better doc structure would be ideal.
+            if 'caso de teste' in text and current_platform:
                 try:
-                    # Determine platform based on content if not set by header
-                    # This is brittle and depends on execution order, headers are better
-                    # A better approach would be to find the nearest H1 header before the table
-                    
+                    table = next(doc_tables)
                     status_text = ''
                     comment_text = ''
-
                     for row in table.rows:
-                        # Find status and comments
                         if 'Resultado da Execução' in row.cells[0].text and len(row.cells) > 1:
                             status_text = row.cells[-1].text
                         if 'Comentários' in row.cells[0].text and len(row.cells) > 1:
                             comment_text = row.cells[-1].text
                     
                     status = parse_status(status_text)
-
-                    # Infer platform from execution details (very rough)
-                    # The doc structure doesn't clearly separate tables by platform headers
-                    # For this specific doc, only WEB has executed tests, so we can assume that.
-                    if status and status != 'Não Executado':
-                        current_platform = 'web'
-                    elif not current_platform: # Default to a platform if none detected
-                        # This part is tricky. A simple doc read won't know which platform
-                        # a "Not Executed" test belongs to without better structure.
-                        # We will assume non-executed tests apply to all non-web for now.
-                        pass
-
-                    if status and current_platform:
+                    if status:
                         test_data[current_platform][status] += 1
                         if status in ['Falhou', 'Bloqueado'] and comment_text:
-                            # Extract bug ID from comments like "PH-177 [QA] Erro..."
                             bug_match = re.search(r'(PH-\d+.*?)(?=\s\s|$)', comment_text)
                             if bug_match:
                                 bug_id = bug_match.group(1).strip()
                                 bug_impact_data[bug_id] += 1
-
-                except IndexError:
-                    # Skip malformed tables
+                except (StopIteration, IndexError):
                     continue
 
         # Post-processing for unexecuted tests based on the doc structure
-        # The provided doc has 20 TCs per platform
         total_tcs_per_platform = 20
         test_data['android']['Não Executado'] = total_tcs_per_platform - sum(test_data['android'].values())
         test_data['ios']['Não Executado'] = total_tcs_per_platform - sum(test_data['ios'].values())
+        test_data['web']['Não Executado'] = total_tcs_per_platform - sum(test_data['web'].values())
         
         # Convert defaultdicts to regular dicts for cleaner output
         final_test_data = {k: dict(v) for k, v in test_data.items()}
@@ -159,7 +142,6 @@ def run_dashboard(test_data, bug_impact_data):
     # --- Cálculos de KPIs ---
     total_testes = sum(sum(platform.values()) for platform in test_data.values())
     
-    # Executed cases are now the sum across all platforms with a status other than 'Não Executado'
     executados = 0
     for platform_data in test_data.values():
         for status, count in platform_data.items():
@@ -210,7 +192,7 @@ def run_dashboard(test_data, bug_impact_data):
         
         fig_plataforma = go.Figure()
         for status in statuses:
-            values = [test_data.get(p.lower().replace(" ", ""), {}).get(status, 0) for p in ['web', 'android', 'ios']]
+            values = [test_data.get(p_key, {}).get(status, 0) for p_key in ['web', 'android', 'ios']]
             fig_plataforma.add_trace(go.Bar(name=status, x=platforms, y=values, marker_color=CHART_COLORS.get(status, '#CCCCCC')))
         
         fig_plataforma.update_layout(barmode='stack', legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), xaxis=dict(tickfont=dict(color='white')), yaxis=dict(tickfont=dict(color='white')), paper_bgcolor='#1F2937', plot_bgcolor='#1F2937', font_color='white', margin=dict(t=20, b=20, l=20, r=20))
