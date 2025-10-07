@@ -25,21 +25,38 @@ st.set_page_config(
 # --- Estilo CSS Customizado ---
 st.markdown("""
 <style>
-    .stMetric {
-        background-color: #1F2937;
-        border: 1px solid #374151;
+    /* Cor de fundo principal da aplicação */
+    .main .block-container {
+        background-color: #0F172A;
+    }
+
+    /* Estilo dos cards para KPIs e Gráficos */
+    .stMetric, .stPlotlyChart {
+        background-color: #1E293B;
+        border: 1px solid #334155;
         border-radius: 0.75rem;
         padding: 1.5rem;
     }
     .stMetric:hover {
-        border-color: #556070;
+        border-color: #475569;
     }
-    .stPlotlyChart {
-        background-color: #1F2937;
-        border: 1px solid #374151;
-        border-radius: 0.75rem;
-        padding: 1.5rem;
+
+    /* Ajuste de espaçamento */
+    .block-container {
+        padding-top: 2rem;
+        padding-bottom: 2rem;
     }
+    
+    div[data-testid="stVerticalBlock"] > [data-testid="stHorizontalBlock"] {
+        margin-bottom: 1.5rem;
+    }
+
+    /* Garante que a cor do texto do subheader seja visível */
+    h2 {
+        color: #E2E8F0;
+        margin-top: 2rem; /* Adiciona espaço acima dos subheaders */
+    }
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -242,7 +259,7 @@ def generate_ai_report_platform(genai_instance, test_data, bug_data, passed_data
     Gere um relatório {'detalhado' if report_type == 'detalhado' else 'resumido'} com base nessas informações.
     """
 
-    model = genai_instance.GenerativeModel('gemini-1.5-flash')
+    model = genai_instance.GenerativeModel('gemini-2.0-flash')
     response = model.generate_content(prompt_template)
     return response.text
 
@@ -252,7 +269,7 @@ def generate_ai_text(df_status, kpis, genai_instance):
         return "Erro: IA não configurada ou indisponível."
     
     try:
-        model = genai_instance.GenerativeModel('gemini-1.5-flash')
+        model = genai_instance.GenerativeModel('gemini-2.0-flash')
         
         prompt = f"""
 Com base nos seguintes dados de um dashboard de métricas de QA (Quality Assurance),
@@ -289,7 +306,6 @@ def run_dashboard(test_data, bug_impact_data, passed_cases_data, genai_instance)
     """Renderiza o dashboard completo com base nos dados fornecidos."""
     st.title("Dashboard de Qualidade")
     st.markdown("Projeto Payment Hub")
-    st.markdown("---")
 
     total_testes = sum(sum(platform.values()) for platform in test_data.values())
     executados = sum(count for platform_data in test_data.values() for status, count in platform_data.items() if status != 'Não Executado')
@@ -310,7 +326,6 @@ def run_dashboard(test_data, bug_impact_data, passed_cases_data, genai_instance)
     kpi_cols[4].metric("Taxa de Defeito", f"{taxa_defeito:.1f}%")
     kpi_cols[5].metric("Taxa de Bloqueio", f"{taxa_bloqueio:.1f}%")
 
-    st.markdown("<br>", unsafe_allow_html=True)
     chart_cols_top = st.columns([2, 3])
 
     with chart_cols_top[0]:
@@ -322,7 +337,7 @@ def run_dashboard(test_data, bug_impact_data, passed_cases_data, genai_instance)
             marker_colors=[CHART_COLORS.get(s, '#CCCCCC') for s in ['Passou', 'Falhou', 'Bloqueado', 'Não Executado']],
             textinfo='percent+label'
         )])
-        fig_geral.update_layout(showlegend=False, margin=dict(t=0, b=0, l=0, r=0), paper_bgcolor='#1F2937', font_color='white')
+        fig_geral.update_layout(showlegend=False, margin=dict(t=0, b=0, l=0, r=0), paper_bgcolor='rgba(0,0,0,0)', font_color='white')
         st.plotly_chart(fig_geral, use_container_width=True)
 
     with chart_cols_top[1]:
@@ -333,21 +348,17 @@ def run_dashboard(test_data, bug_impact_data, passed_cases_data, genai_instance)
         for status in statuses:
             values = [test_data.get(p_key, {}).get(status, 0) for p_key in ['web', 'android', 'ios']]
             fig_plataforma.add_trace(go.Bar(name=status, x=platforms, y=values, marker_color=CHART_COLORS.get(status, '#CCCCCC')))
-        fig_plataforma.update_layout(barmode='stack', legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), paper_bgcolor='#1F2937', plot_bgcolor='#1F2937', font_color='white')
+        fig_plataforma.update_layout(barmode='stack', legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color='white')
         st.plotly_chart(fig_plataforma, use_container_width=True)
-
-    st.markdown("<br>", unsafe_allow_html=True)
 
     if bug_impact_data:
         st.subheader("Impacto de Bugs nos Casos de Teste")
         bug_labels = [f"{k} ({v['description']})" for k, v in bug_impact_data.items()]
         bug_values = [len(v['Falhou']) + len(v['Bloqueado']) for v in bug_impact_data.values()]
         fig_bugs = go.Figure(go.Bar(x=bug_values, y=bug_labels, orientation='h', marker=dict(color='rgba(239, 68, 68, 0.7)')))
-        fig_bugs.update_layout(xaxis_title="Casos de Teste Impactados", yaxis=dict(autorange="reversed"), paper_bgcolor='#1F2937', plot_bgcolor='#1F2937', font_color='white')
+        fig_bugs.update_layout(xaxis_title="Casos de Teste Impactados", yaxis=dict(autorange="reversed"), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color='white')
         st.plotly_chart(fig_bugs, use_container_width=True)
 
-    st.markdown("---")
-    
     # Seção do Agente de IA
     st.subheader("🤖 Assistente de Relatórios com IA")
     if genai_instance and st.session_state.get('genai_configured'):
@@ -414,4 +425,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
