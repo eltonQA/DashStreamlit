@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
-import docx
 import io
 import re
 from collections import defaultdict
@@ -42,10 +41,12 @@ CHART_COLORS = {
     'Não Executado': 'rgba(156, 163, 175, 0.6)'
 }
 
-# --- Funções de Extração de Dados do .DOC ---
+# --- Funções de Extração de Dados ---
 
 def parse_status(status_text):
     """Normaliza o texto do status."""
+    if not isinstance(status_text, str):
+        return None
     status_text = status_text.lower()
     if 'passou' in status_text:
         return 'Passou'
@@ -57,12 +58,12 @@ def parse_status(status_text):
         return 'Não Executado'
     return None
 
-def extract_data_from_doc(doc_file):
+def extract_data_from_html_doc(file_buffer):
     """
-    Extrai e processa dados de teste de um arquivo .doc do TestLink.
+    Extrai e processa dados de teste de um arquivo .doc (formato HTML).
     """
     try:
-        document = docx.Document(doc_file)
+        html_content = file_buffer.getvalue().decode('utf-8')
         
         test_data = {
             'web': defaultdict(int),
@@ -71,55 +72,64 @@ def extract_data_from_doc(doc_file):
         }
         bug_impact_data = defaultdict(int)
 
+        # Divide o HTML por plataforma usando os cabeçalhos H1 como delimitadores
+        platform_sections = re.split(r'(<h1 class="doclevel".*?>.*?Plataforma:.*?</h1>)', html_content, flags=re.IGNORECASE)
+        
         current_platform = None
+        for i, section in enumerate(platform_sections):
+            # Identifica a plataforma a partir do delimitador
+            if re.search(r'Plataforma:', section, re.IGNORECASE):
+                if 'mobile android' in section.lower():
+                    current_platform = 'android'
+                elif 'mobile ios' in section.lower():
+                    current_platform = 'ios'
+                elif 'web' in section.lower():
+                    current_platform = 'web'
+                continue # Pula para a próxima seção que contém as tabelas
 
-        # A lógica assume que as tabelas seguem os cabeçalhos da plataforma
-        doc_tables = iter(document.tables)
-        for para in document.paragraphs:
-            text = para.text.lower()
-            if 'plataforma: mobile android' in text:
-                current_platform = 'android'
-            elif 'plataforma: mobile ios' in text:
-                current_platform = 'ios'
-            elif 'plataforma: web' in text:
-                current_platform = 'web'
-            
-            # Heurística para verificar se um parágrafo é seguido por uma tabela de caso de teste
-            if 'caso de teste' in text and current_platform:
+            if current_platform:
+                # Usa pandas para ler todas as tabelas na seção da plataforma atual
                 try:
-                    table = next(doc_tables)
-                    status_text = ''
-                    comment_text = ''
-                    for row in table.rows:
-                        if 'Resultado da Execução' in row.cells[0].text and len(row.cells) > 1:
-                            status_text = row.cells[-1].text
-                        if 'Comentários' in row.cells[0].text and len(row.cells) > 1:
-                            comment_text = row.cells[-1].text
+                    tables = pd.read_html(io.StringIO(section), flavor='lxml')
+                except ValueError: # Nenhuma tabela encontrada na seção
+                    continue
+
+                for df in tables:
+                    # Heurística para identificar uma tabela de caso de teste válida
+                    if df.shape[1] < 2 or 'Resultado da Execução' not in df[0].to_string():
+                        continue
+                    
+                    status_text = None
+                    comment_text = None
+
+                    # Itera pelas linhas para encontrar status e comentários
+                    for _, row in df.iterrows():
+                        if 'Resultado da Execução' in str(row[0]):
+                            status_text = row.iloc[-1]
+                        if 'Comentários' in str(row[0]):
+                            comment_text = row.iloc[-1]
                     
                     status = parse_status(status_text)
                     if status:
                         test_data[current_platform][status] += 1
-                        if status in ['Falhou', 'Bloqueado'] and comment_text:
+                        if status in ['Falhou', 'Bloqueado'] and isinstance(comment_text, str):
                             bug_match = re.search(r'(PH-\d+.*?)(?=\s\s|$)', comment_text)
                             if bug_match:
                                 bug_id = bug_match.group(1).strip()
                                 bug_impact_data[bug_id] += 1
-                except (StopIteration, IndexError):
-                    continue
-
-        # Pós-processamento para testes não executados com base na estrutura do documento
+        
+        # Pós-processamento para testes não executados
         total_tcs_per_platform = 20
         test_data['android']['Não Executado'] = total_tcs_per_platform - sum(test_data['android'].values())
         test_data['ios']['Não Executado'] = total_tcs_per_platform - sum(test_data['ios'].values())
         test_data['web']['Não Executado'] = total_tcs_per_platform - sum(test_data['web'].values())
         
-        # Converte defaultdicts para dicts normais
         final_test_data = {k: dict(v) for k, v in test_data.items()}
         final_bug_data = dict(bug_impact_data)
         
         return final_test_data, final_bug_data
     except Exception as e:
-        st.error(f"Erro ao processar o arquivo .doc: {e}")
+        st.error(f"Erro ao processar o arquivo. Certifique-se de que é um relatório do TestLink. Detalhe: {e}")
         return None, None
 
 # --- Função Principal da UI ---
@@ -209,18 +219,18 @@ def run_dashboard(test_data, bug_impact_data):
 # --- Aplicação Principal ---
 def main():
     st.sidebar.header("📁 Carregar Relatório")
-    st.sidebar.info("Para que o script funcione, instale a biblioteca `python-docx`.")
+    st.sidebar.info("Este dashboard é otimizado para relatórios do TestLink exportados como .doc (HTML).")
     uploaded_file = st.sidebar.file_uploader(
-        "Selecione o arquivo de relatório (.doc ou .docx)",
-        type=['doc', 'docx']
+        "Selecione o arquivo de relatório (.doc)",
+        type=['doc']
     )
     
     if uploaded_file is not None:
         # Quando um arquivo é carregado, processa-o
         file_buffer = io.BytesIO(uploaded_file.getvalue())
-        test_data, bug_impact_data = extract_data_from_doc(file_buffer)
+        test_data, bug_impact_data = extract_data_from_html_doc(file_buffer)
         
-        if test_data and bug_impact_data is not None:
+        if test_data is not None:
             run_dashboard(test_data, bug_impact_data)
         else:
             st.error("Não foi possível extrair dados do arquivo. Verifique o formato.")
@@ -243,3 +253,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
