@@ -159,10 +159,11 @@ def run_dashboard(test_data, bug_impact_data):
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # Seção de Gráficos em 3 colunas
-    chart_cols = st.columns(3)
+    # Seção de Gráficos
+    # Linha 1: Status Geral e Status por Plataforma
+    chart_cols_top = st.columns([2, 3])
 
-    with chart_cols[0]:
+    with chart_cols_top[0]:
         st.subheader("Status Geral de Execução")
         total_not_executed = sum(d.get('Não Executado', 0) for d in test_data.values())
         
@@ -176,7 +177,7 @@ def run_dashboard(test_data, bug_impact_data):
         fig_geral.update_layout(showlegend=False, margin=dict(t=0, b=0, l=0, r=0), paper_bgcolor='#1F2937', font_color='white')
         st.plotly_chart(fig_geral, use_container_width=True)
 
-    with chart_cols[1]:
+    with chart_cols_top[1]:
         st.subheader("Status por Plataforma")
         platforms = ['WEB', 'Mobile Android', 'MOBILE iOS']
         statuses = ['Passou', 'Falhou', 'Bloqueado', 'Não Executado']
@@ -189,18 +190,20 @@ def run_dashboard(test_data, bug_impact_data):
         fig_plataforma.update_layout(barmode='stack', legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), xaxis=dict(tickfont=dict(color='white')), yaxis=dict(tickfont=dict(color='white')), paper_bgcolor='#1F2937', plot_bgcolor='#1F2937', font_color='white', margin=dict(t=20, b=20, l=20, r=20))
         st.plotly_chart(fig_plataforma, use_container_width=True)
 
-    with chart_cols[2]:
-        if bug_impact_data:
-            st.subheader("Impacto de Bugs")
-            bug_labels = list(bug_impact_data.keys())
-            bug_values = list(bug_impact_data.values())
+    st.markdown("<br>", unsafe_allow_html=True)
 
-            fig_bugs = go.Figure(go.Bar(
-                x=bug_values, y=bug_labels, orientation='h',
-                marker=dict(color='rgba(239, 68, 68, 0.7)', line=dict(color='rgb(239, 68, 68)', width=1))
-            ))
-            fig_bugs.update_layout(xaxis_title="Casos de Teste Impactados", yaxis=dict(autorange="reversed"), paper_bgcolor='#1F2937', plot_bgcolor='#1F2937', font_color='white', margin=dict(t=20, b=20, l=20, r=20))
-            st.plotly_chart(fig_bugs, use_container_width=True)
+    # Linha 2: Impacto de Bugs
+    if bug_impact_data:
+        st.subheader("Impacto de Bugs nos Casos de Teste")
+        bug_labels = list(bug_impact_data.keys())
+        bug_values = list(bug_impact_data.values())
+
+        fig_bugs = go.Figure(go.Bar(
+            x=bug_values, y=bug_labels, orientation='h',
+            marker=dict(color='rgba(239, 68, 68, 0.7)', line=dict(color='rgb(239, 68, 68)', width=1))
+        ))
+        fig_bugs.update_layout(xaxis_title="Casos de Teste Impactados", yaxis=dict(autorange="reversed"), paper_bgcolor='#1F2937', plot_bgcolor='#1F2937', font_color='white', margin=dict(t=20, b=20, l=20, r=20))
+        st.plotly_chart(fig_bugs, use_container_width=True)
 
 
 # --- Aplicação Principal ---
