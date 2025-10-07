@@ -101,7 +101,12 @@ def extract_data_from_html_doc(file_buffer):
 
                 for df in tables:
                     # Heurística para identificar uma tabela de caso de teste válida
-                    if df.shape[1] < 2 or 'Resultado da Execução' not in df[0].to_string():
+                    # Garante que o dataframe não está vazio e tem colunas antes de acessá-las
+                    if df.empty or df.shape[1] < 2:
+                        continue
+
+                    # Verifica se a primeira coluna contém o texto esperado para identificar a tabela correta
+                    if 'Resultado da Execução' not in df.iloc[:, 0].to_string():
                         continue
                     
                     status_text = None
@@ -109,9 +114,10 @@ def extract_data_from_html_doc(file_buffer):
 
                     # Itera pelas linhas para encontrar status e comentários
                     for _, row in df.iterrows():
-                        if 'Resultado da Execução' in str(row[0]):
+                        # Acessa colunas por posição para evitar erros de chave
+                        if 'Resultado da Execução' in str(row.iloc[0]):
                             status_text = row.iloc[-1]
-                        if 'Comentários' in str(row[0]):
+                        if 'Comentários' in str(row.iloc[0]):
                             comment_text = row.iloc[-1]
                     
                     status = parse_status(status_text)
@@ -262,4 +268,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
