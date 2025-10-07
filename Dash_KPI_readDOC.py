@@ -129,13 +129,13 @@ def extract_data_from_html_doc(file_buffer):
                                 bug_id = bug_match.group(1).strip()
                                 bug_impact_data[bug_id] += 1
         
-        # Pós-processamento para testes não executados
-        # Este número é baseado na estrutura do relatório fornecido
+        # Pós-processamento inteligente para testes não executados
         total_tcs_per_platform = 20
-        test_data['android']['Não Executado'] = total_tcs_per_platform - sum(test_data['android'].values())
-        test_data['ios']['Não Executado'] = total_tcs_per_platform - sum(test_data['ios'].values())
-        test_data['web']['Não Executado'] = total_tcs_per_platform - sum(test_data['web'].values())
-        
+        for platform in test_data:
+            total_parsed_for_platform = sum(test_data[platform].values())
+            if total_parsed_for_platform < total_tcs_per_platform:
+                test_data[platform]['Não Executado'] = total_tcs_per_platform - total_parsed_for_platform
+
         final_test_data = {k: dict(v) for k, v in test_data.items()}
         final_bug_data = dict(bug_impact_data)
         
