@@ -348,7 +348,13 @@ def run_dashboard(test_data, bug_impact_data, passed_cases_data, genai_instance)
         for status in statuses:
             values = [test_data.get(p_key, {}).get(status, 0) for p_key in ['web', 'android', 'ios']]
             fig_plataforma.add_trace(go.Bar(name=status, x=platforms, y=values, marker_color=CHART_COLORS.get(status, '#CCCCCC')))
-        fig_plataforma.update_layout(barmode='stack', legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color='white')
+        fig_plataforma.update_layout(
+            barmode='stack', 
+            legend=dict(orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5), 
+            paper_bgcolor='rgba(0,0,0,0)', 
+            plot_bgcolor='rgba(0,0,0,0)', 
+            font_color='white'
+        )
         st.plotly_chart(fig_plataforma, use_container_width=True)
 
     if bug_impact_data:
