@@ -9,6 +9,7 @@ import traceback
 # Importa a biblioteca de IA da Google (opcional)
 try:
     import google.generativeai as genai
+    from google.api_core import exceptions
     GENAI_AVAILABLE = True
 except ImportError:
     GENAI_AVAILABLE = False
@@ -59,10 +60,9 @@ def configure_ai():
     # Tenta obter a chave dos secrets do Streamlit de forma segura
     api_key = None
     try:
-        if hasattr(st, 'secrets'):
-            api_key = st.secrets.get("GOOGLE_API_KEY", None)
+        if hasattr(st, 'secrets') and "GOOGLE_API_KEY" in st.secrets:
+            api_key = st.secrets.get("GOOGLE_API_KEY")
     except Exception:
-        # Se não conseguir acessar secrets, continua sem erro
         api_key = None
     
     # Se não encontrar nos secrets, permite inserção manual
@@ -77,11 +77,18 @@ def configure_ai():
     if api_key and api_key.strip():
         try:
             genai.configure(api_key=api_key)
+            st.session_state['genai_configured'] = True
             return genai
+        except exceptions.PermissionDenied as e:
+            st.sidebar.error("Erro de permissão: A chave de API não é válida. Verifique a chave e tente novamente.")
+            st.session_state['genai_configured'] = False
+            return None
         except Exception as e:
             st.sidebar.error(f"Erro ao configurar IA: {e}")
+            st.session_state['genai_configured'] = False
             return None
-    
+            
+    st.session_state['genai_configured'] = False
     return None
 
 # --- Funções de Extração de Dados ---
@@ -342,8 +349,8 @@ def run_dashboard(test_data, bug_impact_data, passed_cases_data, genai_instance)
     st.markdown("---")
     
     # Seção do Agente de IA
-    if genai_instance:
-        st.subheader("🤖 Assistente de Relatórios com IA")
+    st.subheader("🤖 Assistente de Relatórios com IA")
+    if genai_instance and st.session_state.get('genai_configured'):
         report_cols = st.columns(3)
         
         # Preparação dos dados para o novo relatório
@@ -374,7 +381,7 @@ def run_dashboard(test_data, bug_impact_data, passed_cases_data, genai_instance)
                 report = generate_ai_report_platform(genai_instance, test_data, bug_impact_data, passed_cases_data, 'detalhado')
                 st.text_area("Relatório Detalhado (pronto para copiar)", report, height=500)
     else:
-        st.warning("🔑 Por favor, configure sua chave de API do Google na barra lateral para habilitar o assistente de relatórios.")
+        st.warning("🔑 A configuração da IA falhou ou não foi feita. Por favor, insira uma chave de API válida do Google na barra lateral para habilitar o assistente de relatórios.")
 
 # --- Aplicação Principal ---
 def main():
