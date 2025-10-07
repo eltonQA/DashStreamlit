@@ -4,6 +4,7 @@ import plotly.graph_objects as go
 import io
 import re
 from collections import defaultdict
+import traceback
 
 # --- Configuração da Página ---
 st.set_page_config(
@@ -63,8 +64,12 @@ def extract_data_from_html_doc(file_buffer):
     Extrai e processa dados de teste de um arquivo .doc (formato HTML).
     """
     try:
-        html_content = file_buffer.getvalue().decode('utf-8')
-        
+        # Tenta decodificar com utf-8, mas usa latin-1 como alternativa
+        try:
+            html_content = file_buffer.getvalue().decode('utf-8')
+        except UnicodeDecodeError:
+            html_content = file_buffer.getvalue().decode('latin-1')
+
         test_data = {
             'web': defaultdict(int),
             'android': defaultdict(int),
@@ -90,7 +95,7 @@ def extract_data_from_html_doc(file_buffer):
             if current_platform:
                 # Usa pandas para ler todas as tabelas na seção da plataforma atual
                 try:
-                    tables = pd.read_html(io.StringIO(section), flavor='lxml')
+                    tables = pd.read_html(io.StringIO(section))
                 except ValueError: # Nenhuma tabela encontrada na seção
                     continue
 
@@ -119,6 +124,7 @@ def extract_data_from_html_doc(file_buffer):
                                 bug_impact_data[bug_id] += 1
         
         # Pós-processamento para testes não executados
+        # Este número é baseado na estrutura do relatório fornecido
         total_tcs_per_platform = 20
         test_data['android']['Não Executado'] = total_tcs_per_platform - sum(test_data['android'].values())
         test_data['ios']['Não Executado'] = total_tcs_per_platform - sum(test_data['ios'].values())
@@ -129,7 +135,10 @@ def extract_data_from_html_doc(file_buffer):
         
         return final_test_data, final_bug_data
     except Exception as e:
-        st.error(f"Erro ao processar o arquivo. Certifique-se de que é um relatório do TestLink. Detalhe: {e}")
+        st.error("Ocorreu um erro inesperado ao processar o arquivo.")
+        st.error(f"Tipo do Erro: {type(e).__name__}")
+        st.error(f"Detalhe do Erro: {e}")
+        st.code(traceback.format_exc())
         return None, None
 
 # --- Função Principal da UI ---
@@ -233,7 +242,7 @@ def main():
         if test_data is not None:
             run_dashboard(test_data, bug_impact_data)
         else:
-            st.error("Não foi possível extrair dados do arquivo. Verifique o formato.")
+            st.error("Não foi possível extrair dados do arquivo. Verifique o formato e o console de logs para mais detalhes.")
     else:
         # Se nenhum arquivo for carregado, mostra os dados de exemplo
         st.info("👈 Por favor, carregue um arquivo de relatório .doc para começar.")
