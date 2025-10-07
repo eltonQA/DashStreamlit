@@ -1,25 +1,10 @@
-"""
-QA Dashboard App - Aplicativo para análise de métricas de QA a partir de PDFs
-Versão otimizada para Streamlit Cloud
-"""
 import streamlit as st
 import pandas as pd
-import plotly.express as px
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-import os
-import tempfile
-import PyPDF2
-import pdfplumber
+import io
 import re
-
-# Configuração da página
-st.set_page_config(
-    page_title="QA Dashboard",
-    page_icon="📊",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+from collections import defaultdict
+import traceback
 
 # Importa a biblioteca de IA da Google (opcional)
 try:
@@ -28,6 +13,42 @@ try:
 except ImportError:
     GENAI_AVAILABLE = False
     genai = None
+
+# --- Configuração da Página ---
+st.set_page_config(
+    page_title="Dashboard de Qualidade Dinâmico",
+    page_icon="📊",
+    layout="wide"
+)
+
+# --- Estilo CSS Customizado ---
+st.markdown("""
+<style>
+    .stMetric {
+        background-color: #1F2937;
+        border: 1px solid #374151;
+        border-radius: 0.75rem;
+        padding: 1.5rem;
+    }
+    .stMetric:hover {
+        border-color: #556070;
+    }
+    .stPlotlyChart {
+        background-color: #1F2937;
+        border: 1px solid #374151;
+        border-radius: 0.75rem;
+        padding: 1.5rem;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# --- Cores para os Gráficos ---
+CHART_COLORS = {
+    'Passou': 'rgba(74, 222, 128, 0.8)',
+    'Falhou': 'rgba(248, 113, 113, 0.8)',
+    'Bloqueado': 'rgba(251, 146, 60, 0.8)',
+    'Não Executado': 'rgba(156, 163, 175, 0.6)'
+}
 
 # --- Configuração da API de IA ---
 def configure_ai():
@@ -63,129 +84,161 @@ def configure_ai():
     
     return None
 
-# --- Funções de extração de dados ---
-def extract_text_from_pdf(pdf_file):
-    """Extrai texto de um arquivo PDF"""
-    text = ""
+# --- Funções de Extração de Dados ---
+
+def parse_status(status_text):
+    """Normaliza o texto do status."""
+    if not isinstance(status_text, str):
+        return None
+    status_text = status_text.lower()
+    if 'passou' in status_text:
+        return 'Passou'
+    if 'falhado' in status_text or 'falhou' in status_text:
+        return 'Falhou'
+    if 'bloqueado' in status_text:
+        return 'Bloqueado'
+    if 'não executado' in status_text:
+        return 'Não Executado'
+    return None
+
+def extract_data_from_html_doc(file_buffer):
+    """
+    Extrai e processa dados de teste de um arquivo .doc (formato HTML).
+    """
     try:
-        reader = PyPDF2.PdfReader(pdf_file)
-        for page_num in range(len(reader.pages)):
-            text += reader.pages[page_num].extract_text() or ""
-    except Exception as e:
-        st.error(f"Erro ao extrair texto: {e}")
-    return text
+        try:
+            html_content = file_buffer.getvalue().decode('utf-8')
+        except UnicodeDecodeError:
+            html_content = file_buffer.getvalue().decode('latin-1')
 
-def extract_tables_from_pdf(pdf_file):
-    """Extrai tabelas de um arquivo PDF"""
-    tables = []
-    
-    try:
-        with pdfplumber.open(pdf_file) as pdf:
-            for page in pdf.pages:
-                page_tables = page.extract_tables()
-                if page_tables:
-                    for table in page_tables:
-                        # Limpa a tabela removendo linhas/colunas vazias
-                        cleaned_table = []
-                        for row in table:
-                            cleaned_row = [cell.replace('\n', ' ') if cell else '' for cell in row]
-                            if any(cell.strip() for cell in cleaned_row):
-                                cleaned_table.append(cleaned_row)
-                        if cleaned_table:
-                            tables.append(cleaned_table)
-    except Exception as e:
-        st.error(f"Erro ao extrair tabelas: {e}")
-    
-    return tables
-
-def extract_data_from_pdf(pdf_file):
-    """Extrai dados completos de um arquivo PDF"""
-    extracted_data = {
-        "text": "",
-        "tables": []
-    }
-    
-    extracted_data["text"] = extract_text_from_pdf(pdf_file)
-    extracted_data["tables"] = extract_tables_from_pdf(pdf_file)
-    
-    return extracted_data
-
-def process_extracted_data(extracted_data):
-    """Processa os dados extraídos e calcula métricas"""
-    df_status = pd.DataFrame()
-    kpis = {}
-    
-    tables = extracted_data["tables"]
-    text_data = extracted_data["text"]
-    
-    # Palavras-chave para status de teste
-    status_keywords = ["Passou", "Falhado", "Bloqueado", "Não Executado", "Falhou"]
-    status_counts = {keyword: 0 for keyword in status_keywords}
-    
-    # Tenta encontrar dados de status nas tabelas primeiro
-    for table in tables:
-        for row in table:
-            for cell in row:
-                if cell:
-                    for keyword in status_keywords:
-                        if keyword.lower() in cell.lower():
-                            status_counts[keyword] += 1
-    
-    # Converte contagens para DataFrame
-    if any(status_counts.values()):
-        df_status = pd.DataFrame(list(status_counts.items()), columns=["Status", "Total"])
-        df_status = df_status[df_status["Total"] > 0]
-    else:
-        # Fallback para extração baseada em texto
-        lines = text_data.split("\\n")
-        status_data = []
-        table_header_found = False
-        
-        for line in lines:
-            line = line.strip()
-            if "Status | Total" in line or "Status|Total" in line:
-                table_header_found = True
-                continue
-            if table_header_found and line:
-                # Tenta diferentes separadores
-                for separator in ["|", "\\t", "  "]:
-                    if separator in line:
-                        parts = line.split(separator)
-                        if len(parts) >= 2:
-                            status = parts[0].strip()
-                            try:
-                                total = int(parts[1].strip())
-                                status_data.append([status, total])
-                                break
-                            except ValueError:
-                                pass
-        
-        if status_data:
-            df_status = pd.DataFrame(status_data, columns=["Status", "Total"])
-    
-    # Calcula KPIs
-    if not df_status.empty:
-        total_cases = df_status["Total"].sum()
-        passed_cases = df_status[df_status["Status"].str.contains("Passou", case=False, na=False)]["Total"].sum()
-        executed_cases = df_status[~df_status["Status"].str.contains("Não Executado", case=False, na=False)]["Total"].sum()
-        
-        percent_execution = (executed_cases / total_cases) * 100 if total_cases > 0 else 0
-        percent_success = (passed_cases / executed_cases) * 100 if executed_cases > 0 else 0
-        
-        kpis = {
-            "Total de Casos de Teste": total_cases,
-            "Casos Passados": passed_cases,
-            "Casos Executados": executed_cases,
-            "Percentual de Execucao": percent_execution,
-            "Percentual de Sucesso": percent_success
+        test_data = {
+            'web': defaultdict(int),
+            'android': defaultdict(int),
+            'ios': defaultdict(int)
         }
-    
-    return {
-        "df_status": df_status,
-        "kpis": kpis
-    }
+        bug_impact_data = defaultdict(lambda: {'description': '', 'Falhou': [], 'Bloqueado': []})
+        passed_cases_data = defaultdict(list)
 
-# --- Função para gerar texto com IA ---
+        platform_sections = re.split(r'(<h1 class="doclevel".*?>.*?Plataforma:.*?</h1>)', html_content, flags=re.IGNORECASE)
+        
+        current_platform = None
+        for section in platform_sections:
+            if re.search(r'Plataforma:', section, re.IGNORECASE):
+                if 'mobile android' in section.lower():
+                    current_platform = 'android'
+                elif 'mobile ios' in section.lower():
+                    current_platform = 'ios'
+                elif 'web' in section.lower():
+                    current_platform = 'web'
+                continue
+
+            if current_platform:
+                try:
+                    tables = pd.read_html(io.StringIO(section))
+                except ValueError:
+                    continue
+
+                for df in tables:
+                    if df.empty or df.shape[1] < 2:
+                        continue
+                    if 'Resultado da Execução' not in df.iloc[:, 0].to_string():
+                        continue
+                    
+                    header_html = df.columns.get_level_values(0)[0]
+                    tc_title_match = re.search(r'Caso de Teste (PH-\d+:.*?)&nbsp;', header_html)
+                    tc_title = tc_title_match.group(1).strip() if tc_title_match else "Título não encontrado"
+
+                    status_text, comment_text = None, None
+                    for _, row in df.iterrows():
+                        if 'Resultado da Execução' in str(row.iloc[0]):
+                            status_text = row.iloc[-1]
+                        if 'Comentários' in str(row.iloc[0]):
+                            comment_text = row.iloc[-1]
+                    
+                    status = parse_status(status_text)
+                    if status:
+                        test_data[current_platform][status] += 1
+                        if status == 'Passou':
+                            passed_cases_data[current_platform].append(tc_title)
+                        elif status in ['Falhou', 'Bloqueado'] and isinstance(comment_text, str):
+                            bug_match = re.search(r'(PH-\d+.*?)(?=\s\s|$)', comment_text)
+                            if bug_match:
+                                bug_id = bug_match.group(1).strip()
+                                bug_impact_data[bug_id]['description'] = comment_text.strip()
+                                bug_impact_data[bug_id][status].append(tc_title)
+        
+        total_tcs_per_platform = 20
+        for platform in test_data:
+            total_parsed = sum(test_data[platform].values())
+            if total_parsed < total_tcs_per_platform:
+                test_data[platform]['Não Executado'] = total_tcs_per_platform - total_parsed
+
+        return {k: dict(v) for k, v in test_data.items()}, dict(bug_impact_data), dict(passed_cases_data)
+    except Exception as e:
+        st.error("Ocorreu um erro inesperado ao processar o arquivo.")
+        st.code(traceback.format_exc())
+        return None, None, None
+
+# --- Funções para Gerar Relatórios com IA ---
+
+def generate_ai_report_platform(genai_instance, test_data, bug_data, passed_data, report_type='resumido'):
+    """Gera um relatório detalhado ou resumido por plataforma."""
+    plataformas_str = ""
+    for p_key, p_value in test_data.items():
+        platform_name = {"web": "WEB", "android": "Mobile Android", "ios": "MOBILE iOS"}[p_key]
+        total_planned = sum(p_value.values())
+        executed = total_planned - p_value.get('Não Executado', 0)
+        
+        plataformas_str += f"\n- **Plataforma {platform_name}**:\n"
+        plataformas_str += f"  - Casos Planejados: {total_planned}\n"
+        plataformas_str += f"  - Casos Executados: {executed}\n"
+        plataformas_str += f"  - Passou: {p_value.get('Passou', 0)}\n"
+        plataformas_str += f"  - Falhou: {p_value.get('Falhou', 0)}\n"
+        plataformas_str += f"  - Bloqueado: {p_value.get('Bloqueado', 0)}\n"
+        plataformas_str += f"  - Não Executado: {p_value.get('Não Executado', 0)}\n"
+        
+        if passed_data.get(p_key):
+            plataformas_str += f"  - Casos com Sucesso: {', '.join(passed_data[p_key])}\n"
+
+    bugs_str = ""
+    if not bug_data:
+        bugs_str = "Nenhum bug com impacto direto foi reportado nesta execução."
+    else:
+        for bug_id, info in bug_data.items():
+            bugs_str += f"\n- **Bug {bug_id} ({info['description']})**:\n"
+            impacto_str = []
+            if info.get('Falhou'):
+                impacto_str.append(f"{len(info['Falhou'])} falha(s)")
+            if info.get('Bloqueado'):
+                impacto_str.append(f"{len(info['Bloqueado'])} bloqueio(s)")
+            bugs_str += f"  - Impacto: {', '.join(impacto_str)}\n"
+            if report_type == 'detalhado':
+                if info.get('Falhou'):
+                    bugs_str += "  - Casos que Falharam:\n"
+                    for tc in info['Falhou']:
+                        bugs_str += f"    - {tc}\n"
+                if info.get('Bloqueado'):
+                    bugs_str += "  - Casos Bloqueados:\n"
+                    for tc in info['Bloqueado']:
+                        bugs_str += f"    - {tc}\n"
+
+    prompt_template = f"""
+    Você é um assistente de QA. Crie um relatório de andamento de testes para ser postado no Microsoft Teams.
+    Use o seguinte formato, incluindo emojis e markdown (negrito com **).
+
+    **Análise dos dados:**
+    {plataformas_str}
+
+    **Impactos Encontrados (Bugs):**
+    {bugs_str}
+
+    Gere um relatório {'detalhado' if report_type == 'detalhado' else 'resumido'} com base nessas informações.
+    """
+
+    model = genai_instance.GenerativeModel('gemini-1.5-flash')
+    response = model.generate_content(prompt_template)
+    return response.text
+
 def generate_ai_text(df_status, kpis, genai_instance):
     """Gera resumo usando IA"""
     if not genai_instance:
@@ -217,216 +270,140 @@ Regras de formatação:
 - Distribuição por Status:
 """
         for index, row in df_status.iterrows():
-            prompt += f"    - {row['Status']}: {row['Total']} casos\\n"
+            prompt += f"    - {row['Status']}: {row['Total']} casos\n"
         
         response = model.generate_content(prompt)
         return response.text
     except Exception as e:
         return f"Erro ao gerar texto: {e}"
 
-# --- Funções de exibição ---
-def display_dashboard(processed_data, genai_instance=None):
-    """Exibe o dashboard principal"""
-    df_status = processed_data["df_status"]
-    kpis = processed_data["kpis"]
+# --- Função Principal da UI ---
+def run_dashboard(test_data, bug_impact_data, passed_cases_data, genai_instance):
+    """Renderiza o dashboard completo com base nos dados fornecidos."""
+    st.title("Dashboard de Qualidade")
+    st.markdown("Projeto Payment Hub")
+    st.markdown("---")
+
+    total_testes = sum(sum(platform.values()) for platform in test_data.values())
+    executados = sum(count for platform_data in test_data.values() for status, count in platform_data.items() if status != 'Não Executado')
+    total_passou = sum(d.get('Passou', 0) for d in test_data.values())
+    total_falhou = sum(d.get('Falhou', 0) for d in test_data.values())
+    total_bloqueado = sum(d.get('Bloqueado', 0) for d in test_data.values())
+
+    cobertura = (executados / total_testes) * 100 if total_testes > 0 else 0
+    taxa_sucesso = (total_passou / executados) * 100 if executados > 0 else 0
+    taxa_defeito = (total_falhou / executados) * 100 if executados > 0 else 0
+    taxa_bloqueio = (total_bloqueado / executados) * 100 if executados > 0 else 0
     
-    # Seção de KPIs
-    st.header("📈 KPIs Principais")
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        st.metric(
-            label="Total de Casos de Teste",
-            value=kpis.get("Total de Casos de Teste", 0)
-        )
-    
-    with col2:
-        st.metric(
-            label="Casos Passados",
-            value=kpis.get("Casos Passados", 0)
-        )
-    
-    with col3:
-        st.metric(
-            label="Percentual de Execução",
-            value=f"{kpis.get('Percentual de Execucao', 0):.1f}%"
-        )
-    
-    with col4:
-        st.metric(
-            label="Percentual de Sucesso",
-            value=f"{kpis.get('Percentual de Sucesso', 0):.1f}%"
-        )
-    
+    kpi_cols = st.columns(6)
+    kpi_cols[0].metric("Total de Testes", f"{total_testes}")
+    kpi_cols[1].metric("Testes Executados", f"{executados}")
+    kpi_cols[2].metric("Cobertura de Teste", f"{cobertura:.1f}%")
+    kpi_cols[3].metric("Taxa de Sucesso", f"{taxa_sucesso:.1f}%")
+    kpi_cols[4].metric("Taxa de Defeito", f"{taxa_defeito:.1f}%")
+    kpi_cols[5].metric("Taxa de Bloqueio", f"{taxa_bloqueio:.1f}%")
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    chart_cols_top = st.columns([2, 3])
+
+    with chart_cols_top[0]:
+        st.subheader("Status Geral de Execução")
+        total_not_executed = sum(d.get('Não Executado', 0) for d in test_data.values())
+        fig_geral = go.Figure(data=[go.Pie(
+            labels=['Passou', 'Falhou', 'Bloqueado', 'Não Executado'],
+            values=[total_passou, total_falhou, total_bloqueado, total_not_executed], hole=.4,
+            marker_colors=[CHART_COLORS.get(s, '#CCCCCC') for s in ['Passou', 'Falhou', 'Bloqueado', 'Não Executado']],
+            textinfo='percent+label'
+        )])
+        fig_geral.update_layout(showlegend=False, margin=dict(t=0, b=0, l=0, r=0), paper_bgcolor='#1F2937', font_color='white')
+        st.plotly_chart(fig_geral, use_container_width=True)
+
+    with chart_cols_top[1]:
+        st.subheader("Status por Plataforma")
+        platforms = ['WEB', 'Mobile Android', 'MOBILE iOS']
+        statuses = ['Passou', 'Falhou', 'Bloqueado', 'Não Executado']
+        fig_plataforma = go.Figure()
+        for status in statuses:
+            values = [test_data.get(p_key, {}).get(status, 0) for p_key in ['web', 'android', 'ios']]
+            fig_plataforma.add_trace(go.Bar(name=status, x=platforms, y=values, marker_color=CHART_COLORS.get(status, '#CCCCCC')))
+        fig_plataforma.update_layout(barmode='stack', legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), paper_bgcolor='#1F2937', plot_bgcolor='#1F2937', font_color='white')
+        st.plotly_chart(fig_plataforma, use_container_width=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    if bug_impact_data:
+        st.subheader("Impacto de Bugs nos Casos de Teste")
+        bug_labels = [f"{k} ({v['description']})" for k, v in bug_impact_data.items()]
+        bug_values = [len(v['Falhou']) + len(v['Bloqueado']) for v in bug_impact_data.values()]
+        fig_bugs = go.Figure(go.Bar(x=bug_values, y=bug_labels, orientation='h', marker=dict(color='rgba(239, 68, 68, 0.7)')))
+        fig_bugs.update_layout(xaxis_title="Casos de Teste Impactados", yaxis=dict(autorange="reversed"), paper_bgcolor='#1F2937', plot_bgcolor='#1F2937', font_color='white')
+        st.plotly_chart(fig_bugs, use_container_width=True)
+
     st.markdown("---")
     
-    # Seção de gráficos
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.subheader("📊 Distribuição por Status")
-        fig_pie = px.pie(
-            df_status,
-            values='Total',
-            names='Status',
-            title="Total de Casos por Status",
-            color_discrete_sequence=px.colors.qualitative.Set3
-        )
-        fig_pie.update_traces(textposition='inside', textinfo='percent+label')
-        st.plotly_chart(fig_pie, use_container_width=True)
-    
-    with col2:
-        st.subheader("📈 Casos por Status")
-        fig_bar = px.bar(
-            df_status,
-            x='Status',
-            y='Total',
-            title="Número de Casos por Status",
-            color='Status',
-            color_discrete_sequence=px.colors.qualitative.Set2
-        )
-        fig_bar.update_layout(showlegend=False)
-        st.plotly_chart(fig_bar, use_container_width=True)
-    
-    # Tabela de dados
-    st.subheader("📋 Dados Detalhados")
-    st.dataframe(df_status, use_container_width=True)
-    
-    # Funcionalidade de exportação
-    st.subheader("💾 Exportar Dados")
-    csv = df_status.to_csv(index=False)
-    st.download_button(
-        label="📥 Baixar CSV",
-        data=csv,
-        file_name="qa_metrics.csv",
-        mime="text/csv"
-    )
-    
-    # --- Seção de Geração de Texto com IA ---
-    if genai_instance and GENAI_AVAILABLE:
-        st.markdown("---")
-        st.header("🤖 Gerar Resumo para Teams com IA")
+    # Seção do Agente de IA
+    if genai_instance:
+        st.subheader("🤖 Assistente de Relatórios com IA")
+        report_cols = st.columns(3)
         
-        if st.button("✨ Gerar Resumo"):
-            with st.spinner("Gerando texto com IA..."):
-                ai_text = generate_ai_text(df_status, kpis, genai_instance)
-                st.text_area(
-                    "Texto gerado:", 
-                    ai_text, 
-                    height=200
-                )
+        # Preparação dos dados para o novo relatório
+        kpis_summary = {
+            "Total de Casos de Teste": total_testes,
+            "Casos Passados": total_passou,
+            "Percentual de Execucao": cobertura,
+            "Percentual de Sucesso": taxa_sucesso
+        }
+        total_status_counts = defaultdict(int)
+        for platform_data in test_data.values():
+            for status, count in platform_data.items():
+                total_status_counts[status] += count
+        df_status_summary = pd.DataFrame(list(total_status_counts.items()), columns=["Status", "Total"])
 
-def display_sample_dashboard():
-    """Exibe dashboard de exemplo"""
-    st.header("📊 Dashboard de Exemplo")
-    st.info("Este é um exemplo de como o dashboard aparecerá com dados reais.")
-    
-    # Dados de exemplo
-    sample_data = pd.DataFrame({
-        'Status': ['Passou', 'Falhou', 'Bloqueado', 'Não Executado'],
-        'Total': [100, 10, 5, 20]
-    })
-    
-    sample_kpis = {
-        "Total de Casos de Teste": 135,
-        "Casos Passados": 100,
-        "Percentual de Execucao": 85.2,
-        "Percentual de Sucesso": 87.0
-    }
-    
-    # Seção de KPIs
-    st.subheader("📈 KPIs Principais")
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        st.metric(
-            label="Total de Casos de Teste",
-            value=sample_kpis["Total de Casos de Teste"]
-        )
-    
-    with col2:
-        st.metric(
-            label="Casos Passados",
-            value=sample_kpis["Casos Passados"]
-        )
-    
-    with col3:
-        st.metric(
-            label="Percentual de Execução",
-            value=f"{sample_kpis['Percentual de Execucao']:.1f}%"
-        )
-    
-    with col4:
-        st.metric(
-            label="Percentual de Sucesso",
-            value=f"{sample_kpis['Percentual de Sucesso']:.1f}%"
-        )
-    
-    # Seção de gráficos
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.subheader("📊 Distribuição por Status")
-        fig_pie = px.pie(
-            sample_data,
-            values='Total',
-            names='Status',
-            title="Total de Casos por Status",
-            color_discrete_sequence=px.colors.qualitative.Set3
-        )
-        fig_pie.update_traces(textposition='inside', textinfo='percent+label')
-        st.plotly_chart(fig_pie, use_container_width=True)
-    
-    with col2:
-        st.subheader("📈 Casos por Status")
-        fig_bar = px.bar(
-            sample_data,
-            x='Status',
-            y='Total',
-            title="Número de Casos por Status",
-            color='Status',
-            color_discrete_sequence=px.colors.qualitative.Set2
-        )
-        fig_bar.update_layout(showlegend=False)
-        st.plotly_chart(fig_bar, use_container_width=True)
-    
-    # Tabela de dados
-    st.subheader("📋 Dados de Exemplo")
-    st.dataframe(sample_data, use_container_width=True)
+        if report_cols[0].button("Gerar Resumo para Teams"):
+            with st.spinner("O agente de IA está gerando o resumo..."):
+                report = generate_ai_text(df_status_summary, kpis_summary, genai_instance)
+                st.text_area("Resumo para Teams (pronto para copiar)", report, height=300)
+
+        if report_cols[1].button("Gerar Relatório Resumido"):
+            with st.spinner("O agente de IA está escrevendo o relatório resumido..."):
+                report = generate_ai_report_platform(genai_instance, test_data, bug_impact_data, passed_cases_data, 'resumido')
+                st.text_area("Relatório Resumido (pronto para copiar)", report, height=300)
+
+        if report_cols[2].button("Gerar Relatório Detalhado"):
+            with st.spinner("O agente de IA está escrevendo o relatório detalhado..."):
+                report = generate_ai_report_platform(genai_instance, test_data, bug_impact_data, passed_cases_data, 'detalhado')
+                st.text_area("Relatório Detalhado (pronto para copiar)", report, height=500)
+    else:
+        st.warning("🔑 Por favor, configure sua chave de API do Google na barra lateral para habilitar o assistente de relatórios.")
 
 # --- Aplicação Principal ---
 def main():
-    """Função principal da aplicação"""
-    st.title("📊 QA Dashboard - Análise de Métricas de Testes")
-    st.markdown("---")
+    st.sidebar.header("📁 Carregar Relatório")
+    st.sidebar.info("Dashboard para relatórios do TestLink (.doc).")
+    uploaded_file = st.sidebar.file_uploader("Selecione o arquivo de relatório", type=['doc'])
     
-    # Configura IA se disponível
+    # Configuração da API de IA na sidebar
     genai_instance = configure_ai()
-    
-    # Sidebar para upload de arquivo
-    st.sidebar.header("📁 Upload de Arquivo PDF")
-    uploaded_file = st.sidebar.file_uploader(
-        "Selecione um arquivo PDF com métricas de QA",
-        type=['pdf'],
-        help="Faça upload de um arquivo PDF contendo dados de testes de QA"
-    )
-    
+
     if uploaded_file is not None:
-        # Processa o PDF
-        with st.spinner("Extraindo dados do PDF..."):
-            extracted_data = extract_data_from_pdf(uploaded_file)
-            processed_data = process_extracted_data(extracted_data)
+        file_buffer = io.BytesIO(uploaded_file.getvalue())
+        test_data, bug_impact_data, passed_cases_data = extract_data_from_html_doc(file_buffer)
         
-        # Exibe os resultados
-        if not processed_data["df_status"].empty:
-            display_dashboard(processed_data, genai_instance)
+        if test_data:
+            run_dashboard(test_data, bug_impact_data, passed_cases_data, genai_instance)
         else:
-            st.error("Não foi possível extrair dados válidos do PDF. Verifique se o arquivo contém tabelas de métricas de QA.")
+            st.error("Não foi possível extrair dados do arquivo.")
     else:
-        # Exibe dados de exemplo para demonstração
-        st.info("👈 Faça upload de um arquivo PDF para visualizar as métricas de QA")
-        display_sample_dashboard()
+        st.info("👈 Carregue um arquivo de relatório para começar.")
+        example_test_data = {
+            'web': {'Passou': 3, 'Falhou': 3, 'Bloqueado': 8, 'Não Executado': 6},
+            'android': {'Não Executado': 20}, 'ios': {'Não Executado': 20}
+        }
+        example_bug_data = {
+            'PH-177': {'description': '[QA] Erro 500 ao finalizar pedido em QAS', 'Falhou': [], 'Bloqueado': ['PH-2', 'PH-4', 'PH-5', 'PH-6', 'PH-7', 'PH-16', 'PH-17', 'PH-20']},
+        }
+        example_passed_data = {'web': ['PH-13', 'PH-14', 'PH-19']}
+        run_dashboard(example_test_data, example_bug_data, example_passed_data, genai_instance)
 
 if __name__ == "__main__":
     main()
-
