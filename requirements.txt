@@ -19,3 +19,6 @@ Pillow>=7.1.0
 
 # processamento doc
 python-docx
+
+lxml
+beautifulsoup4
