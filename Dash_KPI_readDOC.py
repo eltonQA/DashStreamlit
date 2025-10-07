@@ -343,17 +343,44 @@ def run_dashboard(test_data, bug_impact_data, passed_cases_data, genai_instance)
     with chart_cols_top[1]:
         st.subheader("Status por Plataforma")
         platforms = ['WEB', 'Mobile Android', 'MOBILE iOS']
+        platform_keys = ['web', 'android', 'ios']
+        platform_totals = [sum(test_data.get(p, {}).values()) for p in platform_keys]
         statuses = ['Passou', 'Falhou', 'Bloqueado', 'Não Executado']
+        
         fig_plataforma = go.Figure()
         for status in statuses:
-            values = [test_data.get(p_key, {}).get(status, 0) for p_key in ['web', 'android', 'ios']]
-            fig_plataforma.add_trace(go.Bar(name=status, x=platforms, y=values, marker_color=CHART_COLORS.get(status, '#CCCCCC')))
+            values = [test_data.get(p_key, {}).get(status, 0) for p_key in platform_keys]
+            
+            # Calcula os percentuais para exibir no gráfico
+            percentages = []
+            for i, val in enumerate(values):
+                total = platform_totals[i]
+                if total > 0 and val > 0:
+                    percent = (val / total) * 100
+                    # Mostra o percentual apenas se for relevante para evitar poluição visual
+                    if percent > 5:
+                       percentages.append(f"{percent:.0f}%")
+                    else:
+                       percentages.append('') 
+                else:
+                    percentages.append('')
+
+            fig_plataforma.add_trace(go.Bar(
+                name=status, 
+                x=platforms, 
+                y=values,
+                text=percentages,
+                textposition='inside',
+                marker_color=CHART_COLORS.get(status, '#CCCCCC')
+            ))
+            
         fig_plataforma.update_layout(
             barmode='stack', 
             legend=dict(orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5), 
             paper_bgcolor='rgba(0,0,0,0)', 
             plot_bgcolor='rgba(0,0,0,0)', 
-            font_color='white'
+            font_color='white',
+            margin=dict(b=80) # Adiciona margem inferior para a legenda não cortar
         )
         st.plotly_chart(fig_plataforma, use_container_width=True)
 
@@ -431,3 +458,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
