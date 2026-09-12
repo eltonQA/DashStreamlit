@@ -1,6 +1,6 @@
 # QA Dashboard - Streamlit Cloud
 
-Dashboard interativo para análise de métricas de QA (Quality Assurance) a partir de arquivos PDF.
+Dashboard interativo para análise de métricas de QA (Quality Assurance) a partir de arquivos PDF do Testlink.
 
 ## 🚀 Funcionalidades
 
